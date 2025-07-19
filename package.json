@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "dynamoose": "^4.0.4"
+  }
+}
