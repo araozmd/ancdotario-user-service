@@ -1,0 +1,185 @@
+name: Deploy User Service
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.12]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-cov
+        pip install -r requirements-dev.txt
+    
+    - name: Test photo-upload function
+      run: |
+        cd photo-upload
+        pip install -r requirements.txt
+        python -m pytest tests/ -v --cov=app --cov-report=term-missing
+    
+    - name: Test user-lookup function
+      run: |
+        cd user-lookup
+        pip install -r requirements.txt
+        python -m pytest tests/ -v --cov=app --cov-report=term-missing
+    
+    - name: Test user-create function
+      run: |
+        cd user-create
+        pip install -r requirements.txt
+        python -m pytest tests/ -v --cov=app --cov-report=term-missing
+    
+    - name: Test user-delete function
+      run: |
+        cd user-delete
+        pip install -r requirements.txt
+        python -m pytest tests/ -v --cov=app --cov-report=term-missing
+
+  deploy-dev:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment: development
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.12
+    
+    - name: Set up SAM CLI
+      uses: aws-actions/setup-sam@v2
+      with:
+        use-installer: true
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+    
+    - name: SAM build
+      run: sam build --use-container
+    
+    - name: SAM deploy to development
+      run: |
+        sam deploy \
+          --config-file samconfig-dev.toml \
+          --no-confirm-changeset \
+          --no-fail-on-empty-changeset
+    
+    - name: Get API Gateway URL
+      run: |
+        API_URL=$(aws cloudformation describe-stacks \
+          --stack-name user-service-dev \
+          --query 'Stacks[0].Outputs[?OutputKey==`UserServiceApi`].OutputValue' \
+          --output text)
+        echo "Development API URL: $API_URL"
+
+  deploy-staging:
+    needs: [test, deploy-dev]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment: staging
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.12
+    
+    - name: Set up SAM CLI
+      uses: aws-actions/setup-sam@v2
+      with:
+        use-installer: true
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+    
+    - name: SAM build
+      run: sam build --use-container
+    
+    - name: SAM deploy to staging
+      run: |
+        sam deploy \
+          --config-file samconfig-staging.toml \
+          --no-confirm-changeset \
+          --no-fail-on-empty-changeset
+    
+    - name: Run integration tests against staging
+      run: |
+        # Add integration tests here
+        echo "Running integration tests against staging environment"
+
+  deploy-production:
+    needs: [test, deploy-dev, deploy-staging]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.12
+    
+    - name: Set up SAM CLI
+      uses: aws-actions/setup-sam@v2
+      with:
+        use-installer: true
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PROD }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PROD }}
+        aws-region: ${{ env.AWS_REGION }}
+    
+    - name: SAM build
+      run: sam build --use-container
+    
+    - name: SAM deploy to production
+      run: |
+        sam deploy \
+          --config-file samconfig-prod.toml \
+          --no-confirm-changeset \
+          --no-fail-on-empty-changeset
+    
+    - name: Notify deployment success
+      run: |
+        echo "🚀 Production deployment completed successfully!"
+        API_URL=$(aws cloudformation describe-stacks \
+          --stack-name user-service-prod \
+          --query 'Stacks[0].Outputs[?OutputKey==`UserServiceApi`].OutputValue' \
+          --output text)
+        echo "Production API URL: $API_URL"

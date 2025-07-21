@@ -1,0 +1,19 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.12
+    commands:
+      - pip install aws-sam-cli
+  pre_build:
+    commands:
+      - echo "Debug - Listing files in current directory:"
+      - ls -la
+      - echo "Debug - Checking if packaged-template.yaml exists:"
+      - test -f packaged-template.yaml && echo "packaged-template.yaml found" || echo "packaged-template.yaml NOT found"
+      - echo "Debug - Checking samconfig-dev.toml:"
+      - cat samconfig-dev.toml
+  build:
+    commands:
+      - sam deploy --config-file samconfig-dev.toml --no-confirm-changeset --no-fail-on-empty-changeset --template-file packaged-template.yaml --debug
