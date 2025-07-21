@@ -199,6 +199,8 @@ Resources:
                   - s3:GetBucketTagging
                   - s3:PutBucketEncryption
                   - s3:GetBucketEncryption
+                  - s3:PutEncryptionConfiguration
+                  - s3:GetEncryptionConfiguration
                   - s3:PutBucketVersioning
                   - s3:GetBucketVersioning
                   - s3:PutBucketNotification
