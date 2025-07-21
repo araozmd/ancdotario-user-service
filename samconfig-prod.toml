@@ -20,7 +20,8 @@ resolve_s3 = true
 fail_on_empty_changeset = false
 parameter_overrides = [
     "Environment=prod",
-    "TableName=Users-prod"
+    "TableName=Users-prod",
+    "ParameterStorePrefix=/anecdotario/prod/user-service"
 ]
 tags = [
     "Environment=prod",
@@ -39,12 +40,14 @@ watch = false
 warm_containers = "LAZY"
 parameter_overrides = [
     "Environment=prod",
-    "TableName=Users-prod"
+    "TableName=Users-prod",
+    "ParameterStorePrefix=/anecdotario/prod/user-service"
 ]
 
 [default.local_start_lambda.parameters]
 warm_containers = "LAZY"
 parameter_overrides = [
     "Environment=prod",
-    "TableName=Users-prod"
+    "TableName=Users-prod",
+    "ParameterStorePrefix=/anecdotario/prod/user-service"
 ]

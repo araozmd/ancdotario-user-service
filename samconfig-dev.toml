@@ -19,7 +19,8 @@ confirm_changeset = true
 resolve_s3 = true
 parameter_overrides = [
     "Environment=dev",
-    "TableName=Users-dev"
+    "TableName=Users-dev",
+    "ParameterStorePrefix=/anecdotario/dev/user-service"
 ]
 tags = [
     "Environment=dev",
@@ -37,7 +38,8 @@ watch = true
 warm_containers = "EAGER"
 parameter_overrides = [
     "Environment=dev",
-    "TableName=Users-dev"
+    "TableName=Users-dev",
+    "ParameterStorePrefix=/anecdotario/dev/user-service"
 ]
 
 [default.local_start_lambda.parameters]

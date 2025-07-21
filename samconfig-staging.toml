@@ -19,7 +19,8 @@ confirm_changeset = true
 resolve_s3 = true
 parameter_overrides = [
     "Environment=staging",
-    "TableName=Users-staging"
+    "TableName=Users-staging",
+    "ParameterStorePrefix=/anecdotario/staging/user-service"
 ]
 tags = [
     "Environment=staging",
@@ -37,12 +38,14 @@ watch = false
 warm_containers = "LAZY"
 parameter_overrides = [
     "Environment=staging",
-    "TableName=Users-staging"
+    "TableName=Users-staging",
+    "ParameterStorePrefix=/anecdotario/staging/user-service"
 ]
 
 [default.local_start_lambda.parameters]
 warm_containers = "LAZY"
 parameter_overrides = [
     "Environment=staging",
-    "TableName=Users-staging"
+    "TableName=Users-staging",
+    "ParameterStorePrefix=/anecdotario/staging/user-service"
 ]

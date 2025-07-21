@@ -4,65 +4,115 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Service Overview
 
-This is the **User Service** microservice for the Anecdotario platform - a serverless AWS Lambda service that manages user accounts, authentication, and certification systems. Built with Python 3.12 LTS and deployed using AWS SAM (Serverless Application Model).
+This is the **User Service** microservice for the Anecdotario platform - a serverless AWS Lambda service that manages user accounts, photo uploads, and authentication. Built with Python 3.12 LTS and deployed using AWS SAM (Serverless Application Model).
 
 ## Architecture
 
 ### Technology Stack
 - **Runtime**: Python 3.12 LTS on AWS Lambda
 - **Database**: DynamoDB with PynamoDB ORM (v6.0.0+)
+- **Storage**: S3 bucket for photo storage (created with stack)
+- **Authentication**: AWS Cognito JWT token validation
+- **Image Processing**: Pillow for image optimization
 - **Testing**: pytest test framework
 - **Deployment**: AWS SAM (Serverless Application Model)
 - **API**: AWS API Gateway with Lambda Proxy Integration
 
 ### File Structure
 ```
-hello-world/          # Lambda function code (self-contained)
-  app.py             # Main Lambda handler
+shared/              # Shared modules for both functions
+  config.py          # Configuration management (local .env + Parameter Store)
   models/            # DynamoDB models
-    __init__.py      # Package initialization
     user.py          # User model with PynamoDB
-  tests/unit/        # Unit tests with pytest
-    test_handler.py  # Lambda handler tests
-  requirements.txt   # Function dependencies
-template.yaml        # SAM template for AWS resources
-samconfig.toml       # SAM deployment configuration
+  .env.defaults      # Default configuration values
+  .env.{env}         # Environment-specific overrides
+
+photo-upload/        # Photo upload Lambda function
+  app.py             # Photo upload handler (POST /users/{userId}/photo)
+  requirements.txt   # Dependencies (Pillow, PyJWT, boto3, pynamodb)
+  tests/unit/        # Unit tests for photo upload
+
+user-lookup/         # User lookup Lambda function  
+  app.py             # User lookup handler (GET /users?nickname={nickname})
+  requirements.txt   # Dependencies (pynamodb only)
+  tests/unit/        # Unit tests for user lookup
+
+template.yaml        # SAM template with two separate functions
+samconfig-*.toml     # SAM deployment configurations per environment
 ```
 
 ## Data Model
 
 ### User Schema
-The User model (`hello-world/models/user.py`) includes:
-- **id**: Primary key (hash key)
-- **name**: Required field
-- **email**: Required field with global secondary index
-- **is_certified**: Boolean with global index for certification queries
-- **created_at**: Timestamp with global index
-- **profile_image**: Optional profile image URL
+The User model (`photo-upload/models/user.py`) includes:
+- **cognito_id**: Primary key (hash key) - Cognito user ID (sub)
+- **nickname**: Searchable unique nickname
+- **image_url**: S3 URL for profile image
+- **created_at**: Timestamp when user record was created
+- **updated_at**: Timestamp when user record was last updated
 
 ### Global Secondary Indexes
-- `email-index`: For user lookup by email
-- `certified-index`: For querying certified users
-- `created-at-index`: For chronological user queries
+- `nickname-index`: For user lookup by nickname (main search field)
+
+## API Endpoints
+
+### Photo Upload Function
+- **POST** `/users/{userId}/photo`
+- **Headers**: `Authorization: Bearer <cognito-jwt-token>`
+- **Body**: JSON with base64 encoded image data and optional nickname
+  ```json
+  {
+    "image": "data:image/jpeg;base64,...",
+    "nickname": "optional-for-new-users"
+  }
+  ```
+- **Function**: `PhotoUploadFunction` (512MB memory, 30s timeout)
+- **Features**:
+  - Validates Cognito JWT token
+  - Ensures user can only upload their own photo
+  - Optimizes images (max 1920x1080, JPEG quality 85)
+  - Creates/updates user record in DynamoDB
+  - Returns presigned URL valid for 7 days
+  - For new users, nickname is required
+
+### User Lookup Function
+- **GET** `/users/{nickname}`
+- **Headers**: `Authorization: Bearer <cognito-jwt-token>`
+- **Path Parameters**: `nickname` (required, 3-20 characters)
+- **Response**: User object with cognito_id, nickname, image_url, and timestamps
+- **Function**: `UserLookupFunction` (128MB memory, 5s timeout)
+- **Features**:
+  - Requires Cognito JWT authentication
+  - Lightweight and fast (read-only DynamoDB access)
+  - Uses GSI for efficient nickname lookup
+  - Returns 404 if user not found
+  - Basic nickname validation
 
 ## Common Development Commands
 
 ### Building and Testing
 ```bash
-# Build the service
+# Build both functions
 sam build
 
-# Run unit tests
-cd hello-world/
+# Test photo upload function
+cd photo-upload/
 pip install -r requirements.txt
 pytest tests/unit/
 
-# Test single function locally
-sam local invoke HelloWorldFunction --event events/event.json
+# Test user lookup function  
+cd ../user-lookup/
+pip install -r requirements.txt
+pytest tests/unit/
+
+# Test functions locally
+sam local invoke PhotoUploadFunction --event events/photo-event.json
+sam local invoke UserLookupFunction --event events/lookup-event.json
 
 # Start local API (port 3000)
 sam local start-api
-curl http://localhost:3000/hello
+curl -X POST http://localhost:3000/users/123/photo -H "Authorization: Bearer <token>" -d '{"image":"base64-data"}'
+curl -H "Authorization: Bearer <token>" http://localhost:3000/users/testuser
 ```
 
 ### Environment-Specific Deployment
@@ -117,10 +167,66 @@ Each environment has:
 - Environment-specific tags and settings
 
 ### Development Workflow
-1. **Lambda Handler**: Main business logic in `hello-world/app.py` with type hints
-2. **Models**: DynamoDB schemas in `hello-world/models/` using PynamoDB
-3. **Tests**: Unit tests in `hello-world/tests/unit/` using pytest
+1. **Lambda Handler**: Photo upload logic in `photo-upload/app.py` with JWT validation
+2. **Models**: DynamoDB schemas in `photo-upload/models/` using PynamoDB
+3. **Tests**: Unit tests in `photo-upload/tests/unit/` using pytest
 4. **API Configuration**: Routes defined in `template.yaml` Events section
+5. **S3 Integration**: Bucket created/deleted with stack, lifecycle rules configured
+
+### Configuration Management
+
+The service uses a **hybrid configuration approach**:
+1. **Local .env files** for static application settings
+2. **AWS Parameter Store** for environment-specific and sensitive configuration
+
+#### Local Configuration (.env files)
+Static settings stored in version-controlled files:
+- `photo-upload/.env.defaults` - Base configuration for all environments
+- `photo-upload/.env.{environment}` - Environment-specific overrides
+
+Contains: image processing settings, security rules, feature flags, default CORS origins
+
+#### Parameter Store (SSM)
+**Cognito Configuration (Centralized)** under `/anecdotario/{environment}/cognito/`:
+- `user-pool-id` (required)
+- `region` (required)
+
+**User Service Configuration** under `/anecdotario/{environment}/user-service/`:
+- `photo-bucket-name` (optional override)
+- `user-table-name` (optional override) 
+- `allowed-origins` (optional CORS override)
+
+#### Setup Configuration
+```bash
+# Ensure Cognito parameters exist (should already be configured)
+# /anecdotario/{environment}/cognito/user-pool-id
+# /anecdotario/{environment}/cognito/region
+
+# Set up optional user service SSM parameters
+./scripts/setup-parameters.sh dev [aws-profile]
+
+# Test complete configuration (local + SSM + Cognito)
+python scripts/test-parameters.py dev [aws-profile]
+
+# Edit static configuration
+vim photo-upload/.env.defaults
+vim photo-upload/.env.dev
+```
+
+#### Required Parameters
+The service expects these Parameter Store values to exist:
+- `/anecdotario/{environment}/cognito/user-pool-id` - Your Cognito User Pool ID
+- `/anecdotario/{environment}/cognito/region` - AWS region for Cognito
+
+SAM configuration (samconfig files):
+```bash
+# In samconfig-dev.toml, samconfig-staging.toml, samconfig-prod.toml
+parameter_overrides = [
+    "Environment=dev",
+    "TableName=Users-dev",
+    "ParameterStorePrefix=/anecdotario/dev/user-service"
+]
+```
 
 ### Project Structure Benefits
 - **Self-contained**: All Lambda code in one directory

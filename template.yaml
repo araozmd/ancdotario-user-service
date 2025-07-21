@@ -21,73 +21,193 @@ Parameters:
     Type: String
     Description: KMS Key ID for encryption (optional)
     Default: ""
+  
+  
+  MaxImageSize:
+    Type: Number
+    Description: Maximum image size in bytes
+    Default: 5242880  # 5MB
+  
+  ParameterStorePrefix:
+    Type: String
+    Description: Parameter Store prefix for configuration values
+    Default: !Sub "/anecdotario/${Environment}/user-service"
 
 # More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
   Function:
-    Timeout: 3
+    Timeout: 30  # Increased for image processing
     Environment:
       Variables:
         ENVIRONMENT: !Ref Environment
         USER_TABLE_NAME: !Ref UserTable
         KMS_KEY_ID: !Ref KMSKeyId
         ALLOWED_ORIGINS: !Sub "https://${Environment}.anecdotario.com,https://anecdotario.com"
+        PHOTO_BUCKET_NAME: !Ref PhotoBucket
+        MAX_IMAGE_SIZE: !Ref MaxImageSize
+        PARAMETER_STORE_PREFIX: !Ref ParameterStorePrefix
 
 Resources:
-  HelloWorldFunction:
-    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+  PhotoUploadFunction:
+    Type: AWS::Serverless::Function
     Properties:
-      CodeUri: hello-world/
+      CodeUri: photo-upload/
       Handler: app.lambda_handler
       Runtime: python3.12
       Architectures:
         - x86_64
+      MemorySize: 512  # Increased for image processing
+      Timeout: 30      # Longer timeout for image processing
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref UserTable
+        - S3CrudPolicy:
+            BucketName: !Ref PhotoBucket
+        - Statement:
+          - Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+              - ssm:GetParametersByPath
+            Resource: 
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ParameterStorePrefix}/*"
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/anecdotario/${Environment}/cognito/*"
       Events:
-        HelloWorld:
-          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+        PhotoUpload:
+          Type: Api
           Properties:
-            Path: /hello
+            Path: /users/{userId}/photo
+            Method: post
+            RequestParameters:
+              - method.request.header.Authorization:
+                  Required: true
+
+  UserLookupFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: user-lookup/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures:
+        - x86_64
+      MemorySize: 128  # Minimal memory for read operations
+      Timeout: 5       # Short timeout for simple queries
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref UserTable
+        - Statement:
+          - Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+              - ssm:GetParametersByPath
+            Resource: 
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ParameterStorePrefix}/*"
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/anecdotario/${Environment}/cognito/*"
+      Events:
+        GetUserByNickname:
+          Type: Api
+          Properties:
+            Path: /users/{nickname}
             Method: get
+            RequestParameters:
+              - method.request.path.nickname:
+                  Required: true
+              - method.request.header.Authorization:
+                  Required: true
+
+  UserCreateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: user-create/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures:
+        - x86_64
+      MemorySize: 128  # Minimal memory for write operations
+      Timeout: 10      # Slightly longer timeout for database writes
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserTable
+        - Statement:
+          - Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+              - ssm:GetParametersByPath
+            Resource: 
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ParameterStorePrefix}/*"
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/anecdotario/${Environment}/cognito/*"
+      Events:
+        CreateUser:
+          Type: Api
+          Properties:
+            Path: /users
+            Method: post
+            RequestParameters:
+              - method.request.header.Authorization:
+                  Required: true
+
+  UserDeleteFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: user-delete/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures:
+        - x86_64
+      MemorySize: 256  # More memory for S3 operations
+      Timeout: 30      # Longer timeout for photo cleanup
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserTable
+        - S3CrudPolicy:
+            BucketName: !Ref PhotoBucket
+        - Statement:
+          - Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+              - ssm:GetParametersByPath
+            Resource: 
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ParameterStorePrefix}/*"
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/anecdotario/${Environment}/cognito/*"
+      Events:
+        DeleteUserSelf:
+          Type: Api
+          Properties:
+            Path: /users
+            Method: delete
+            RequestParameters:
+              - method.request.header.Authorization:
+                  Required: true
+        DeleteUserById:
+          Type: Api
+          Properties:
+            Path: /users/{userId}
+            Method: delete
+            RequestParameters:
+              - method.request.path.userId:
+                  Required: true
+              - method.request.header.Authorization:
+                  Required: true
 
   UserTable:
     Type: AWS::DynamoDB::Table
     Properties:
       TableName: !Ref TableName
       AttributeDefinitions:
-        - AttributeName: id
+        - AttributeName: cognito_id
           AttributeType: S
-        - AttributeName: email
-          AttributeType: S
-        - AttributeName: is_certified
-          AttributeType: S
-        - AttributeName: created_at
+        - AttributeName: nickname
           AttributeType: S
       KeySchema:
-        - AttributeName: id
+        - AttributeName: cognito_id
           KeyType: HASH
       GlobalSecondaryIndexes:
-        - IndexName: email-index
+        - IndexName: nickname-index
           KeySchema:
-            - AttributeName: email
-              KeyType: HASH
-          Projection:
-            ProjectionType: ALL
-          BillingMode: PAY_PER_REQUEST
-        - IndexName: certified-index
-          KeySchema:
-            - AttributeName: is_certified
-              KeyType: HASH
-            - AttributeName: created_at
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
-          BillingMode: PAY_PER_REQUEST
-        - IndexName: created-at-index
-          KeySchema:
-            - AttributeName: created_at
+            - AttributeName: nickname
               KeyType: HASH
           Projection:
             ProjectionType: ALL
@@ -101,20 +221,69 @@ Resources:
         - Key: Service
           Value: user-service
 
+  PhotoBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-photos-${Environment}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldPhotos
+            Status: Enabled
+            ExpirationInDays: 365
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: user-service
+
 Outputs:
   # API Gateway endpoint
   UserServiceApi:
     Description: !Sub "API Gateway endpoint URL for ${Environment} stage"
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/hello/"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
     Export:
       Name: !Sub "${AWS::StackName}-ApiEndpoint"
   
-  # Lambda function
-  UserServiceFunction:
-    Description: "User Service Lambda Function ARN"
-    Value: !GetAtt HelloWorldFunction.Arn
+  # Lambda functions
+  PhotoUploadFunction:
+    Description: "Photo Upload Lambda Function ARN"
+    Value: !GetAtt PhotoUploadFunction.Arn
     Export:
-      Name: !Sub "${AWS::StackName}-FunctionArn"
+      Name: !Sub "${AWS::StackName}-PhotoUploadFunctionArn"
+  
+  UserLookupFunction:
+    Description: "User Lookup Lambda Function ARN"
+    Value: !GetAtt UserLookupFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-UserLookupFunctionArn"
+  
+  UserCreateFunction:
+    Description: "User Create Lambda Function ARN"
+    Value: !GetAtt UserCreateFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-UserCreateFunctionArn"
+  
+  UserDeleteFunction:
+    Description: "User Delete Lambda Function ARN"
+    Value: !GetAtt UserDeleteFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-UserDeleteFunctionArn"
+  
+  # S3 Bucket
+  PhotoBucket:
+    Description: "S3 bucket for user photos"
+    Value: !Ref PhotoBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-PhotoBucket"
   
   # DynamoDB table
   UserTable:

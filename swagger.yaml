@@ -1,0 +1,740 @@
+openapi: 3.0.3
+info:
+  title: Anecdotario User Service API
+  description: |
+    Microservice for managing user accounts, authentication, and photo uploads in the Anecdotario platform.
+    
+    **Key Features:**
+    - User account creation and management
+    - Profile photo upload with automatic optimization
+    - User lookup by nickname
+    - Secure account deletion with data cleanup
+    - JWT-based authentication via AWS Cognito
+    
+    **Architecture:**
+    - Built on AWS Lambda with Python 3.12
+    - DynamoDB for user data storage
+    - S3 for photo storage with lifecycle management
+    - AWS Parameter Store for configuration
+    
+    All endpoints require JWT authentication via Cognito user pools.
+  version: 1.0.0
+  contact:
+    name: Anecdotario Backend Team
+  license:
+    name: MIT
+
+servers:
+  - url: https://api.anecdotario.com/prod
+    description: Production environment
+  - url: https://api-staging.anecdotario.com/staging
+    description: Staging environment
+  - url: https://api-dev.anecdotario.com/dev
+    description: Development environment
+  - url: http://localhost:3000
+    description: Local development (SAM local)
+
+security:
+  - CognitoJWT: []
+
+tags:
+  - name: Users
+    description: User account management operations
+  - name: Photos
+    description: Profile photo upload and management
+
+paths:
+  /users:
+    post:
+      tags:
+        - Users
+      summary: Create a new user account
+      description: |
+        Creates a new user account using the authenticated user's JWT token.
+        The user ID (sub) is extracted from the JWT token, and a unique nickname must be provided.
+        
+        **Business Rules:**
+        - User ID comes from JWT token (sub claim)
+        - Nickname must be unique across all users
+        - Nickname must follow validation rules (3-20 chars, alphanumeric + underscore/hyphen)
+        - Reserved words are not allowed as nicknames
+      operationId: createUser
+      security:
+        - CognitoJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+            examples:
+              simple:
+                summary: Simple user creation
+                value:
+                  nickname: "john_doe"
+              with_special_chars:
+                summary: With allowed special characters
+                value:
+                  nickname: "user-123"
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateUserResponse'
+              examples:
+                success:
+                  summary: Successful user creation
+                  value:
+                    message: "User created successfully"
+                    user:
+                      cognito_id: "us-east-1:12345678-1234-1234-1234-123456789012"
+                      nickname: "john_doe"
+                      image_url: null
+                      created_at: "2023-01-01T12:00:00.000000"
+                      updated_at: "2023-01-01T12:00:00.000000"
+                    created_at: "2023-01-01T12:00:00Z"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    
+    delete:
+      tags:
+        - Users
+      summary: Delete current user account (self-deletion)
+      description: |
+        Deletes the authenticated user's account and all associated data.
+        
+        **Warning: This action cannot be undone!**
+        
+        **Data Cleanup:**
+        - Removes user record from DynamoDB
+        - Deletes all user photos from S3
+        - Requires explicit confirmation via query parameter
+        
+        **Security:**
+        - Users can only delete their own account
+        - JWT token validation ensures authenticity
+        
+        **Optional Deletion Reason:**
+        While DELETE operations cannot have a request body per OpenAPI spec,
+        the implementation optionally accepts a JSON body with deletion reason
+        for audit purposes, though this is not documented here due to spec limitations.
+      operationId: deleteCurrentUser
+      security:
+        - CognitoJWT: []
+      parameters:
+        - name: confirm
+          in: query
+          required: true
+          description: Must be set to "true" to confirm account deletion
+          schema:
+            type: string
+            enum: ["true"]
+          example: "true"
+        - name: reason
+          in: query
+          required: false
+          description: Optional reason for account deletion (alternative to request body)
+          schema:
+            type: string
+            maxLength: 500
+          example: "No longer using the service"
+      responses:
+        '200':
+          description: User account deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteUserResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /users/{nickname}:
+    get:
+      tags:
+        - Users
+      summary: Get user by nickname
+      description: |
+        Retrieves user information by nickname. This is a public lookup endpoint 
+        that returns basic user profile information.
+        
+        **Use Cases:**
+        - User profile lookups
+        - Nickname availability checking
+        - User discovery features
+      operationId: getUserByNickname
+      security:
+        - CognitoJWT: []
+      parameters:
+        - name: nickname
+          in: path
+          required: true
+          description: The unique nickname of the user to retrieve
+          schema:
+            type: string
+            pattern: '^[a-zA-Z0-9_-]{3,20}$'
+            minLength: 3
+            maxLength: 20
+          examples:
+            simple:
+              summary: Simple nickname
+              value: "john_doe"
+            with_numbers:
+              summary: Nickname with numbers
+              value: "user123"
+            with_hyphen:
+              summary: Nickname with hyphen
+              value: "john-doe"
+      responses:
+        '200':
+          description: User found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetUserResponse'
+              examples:
+                user_with_photo:
+                  summary: User with profile photo
+                  value:
+                    user:
+                      cognito_id: "us-east-1:12345678-1234-1234-1234-123456789012"
+                      nickname: "john_doe"
+                      image_url: "https://bucket.s3.amazonaws.com/user-123/profile_20230101_abc123.jpg"
+                      created_at: "2023-01-01T12:00:00.000000"
+                      updated_at: "2023-01-01T12:00:00.000000"
+                    retrieved_at: "2023-01-01T12:00:00Z"
+                user_without_photo:
+                  summary: User without profile photo
+                  value:
+                    user:
+                      cognito_id: "us-east-1:87654321-4321-4321-4321-210987654321"
+                      nickname: "jane_smith"
+                      image_url: null
+                      created_at: "2023-01-01T10:00:00.000000"
+                      updated_at: "2023-01-01T10:00:00.000000"
+                    retrieved_at: "2023-01-01T12:00:00Z"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /users/{userId}:
+    delete:
+      tags:
+        - Users
+      summary: Delete user account by ID
+      description: |
+        Deletes a specific user account by user ID. Currently restricted to self-deletion only.
+        
+        **Security Note:** Users can only delete their own account. The userId in the path 
+        must match the user ID (sub) from the JWT token.
+        
+        **Warning: This action cannot be undone!**
+        
+        **Optional Deletion Reason:**
+        While DELETE operations cannot have a request body per OpenAPI spec,
+        the implementation optionally accepts a JSON body with deletion reason
+        for audit purposes, though this is not documented here due to spec limitations.
+      operationId: deleteUserById
+      security:
+        - CognitoJWT: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: The Cognito user ID (sub) of the user to delete
+          schema:
+            type: string
+            pattern: '^[a-zA-Z0-9:-]+$'
+          example: "us-east-1:12345678-1234-1234-1234-123456789012"
+        - name: confirm
+          in: query
+          required: true
+          description: Must be set to "true" to confirm account deletion
+          schema:
+            type: string
+            enum: ["true"]
+          example: "true"
+        - name: reason
+          in: query
+          required: false
+          description: Optional reason for account deletion (alternative to request body)
+          schema:
+            type: string
+            maxLength: 500
+          example: "User requested account closure"
+      responses:
+        '200':
+          description: User account deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteUserResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /users/{userId}/photo:
+    post:
+      tags:
+        - Photos
+      summary: Upload user profile photo
+      description: |
+        Uploads and processes a profile photo for the authenticated user.
+        
+        **Image Processing:**
+        - Automatic format conversion to JPEG
+        - Resizing to max 1920x1080 pixels
+        - Quality optimization (85% JPEG quality)
+        - Size limit: 5MB maximum
+        
+        **Storage:**
+        - Photos stored in S3 with user-specific prefix
+        - Generates unique filename with timestamp
+        - Returns presigned URL valid for 7 days
+        
+        **User Creation:**
+        - If user doesn't exist, can create new user with nickname
+        - Existing users can update their profile photo
+      operationId: uploadUserPhoto
+      security:
+        - CognitoJWT: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: The Cognito user ID (sub) - must match JWT token
+          schema:
+            type: string
+            pattern: '^[a-zA-Z0-9:-]+$'
+          example: "us-east-1:12345678-1234-1234-1234-123456789012"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadPhotoRequest'
+            examples:
+              existing_user:
+                summary: Photo upload for existing user
+                value:
+                  image: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD..."
+              new_user:
+                summary: Photo upload for new user (with nickname)
+                value:
+                  image: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD..."
+                  nickname: "new_user123"
+      responses:
+        '200':
+          description: Photo uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadPhotoResponse'
+              examples:
+                success:
+                  summary: Successful photo upload
+                  value:
+                    message: "Photo uploaded successfully"
+                    photo_url: "https://bucket.s3.amazonaws.com/user-123/profile_20230101_abc123.jpg"
+                    s3_key: "user-123/profile_20230101_abc123.jpg"
+                    size_reduction: "23.4%"
+                    user:
+                      cognito_id: "us-east-1:12345678-1234-1234-1234-123456789012"
+                      nickname: "john_doe"
+                      image_url: "https://bucket.s3.amazonaws.com/user-123/profile_20230101_abc123.jpg"
+                      created_at: "2023-01-01T12:00:00.000000"
+                      updated_at: "2023-01-01T12:00:00.000000"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    CognitoJWT:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT token issued by AWS Cognito User Pool.
+        
+        **Token Requirements:**
+        - Must be valid and not expired
+        - Must contain 'sub' claim (user ID)
+        - Must be issued by the configured Cognito User Pool
+        
+        **Header Format:**
+        ```
+        Authorization: Bearer <jwt-token>
+        ```
+
+  schemas:
+    User:
+      type: object
+      description: User profile information
+      properties:
+        cognito_id:
+          type: string
+          description: AWS Cognito user ID (sub claim from JWT)
+          example: "us-east-1:12345678-1234-1234-1234-123456789012"
+        nickname:
+          type: string
+          description: Unique user nickname (3-20 characters, alphanumeric + underscore/hyphen)
+          pattern: '^[a-zA-Z0-9_-]{3,20}$'
+          minLength: 3
+          maxLength: 20
+          example: "john_doe"
+        image_url:
+          type: string
+          nullable: true
+          description: S3 URL of user's profile photo (null if no photo uploaded)
+          format: uri
+          example: "https://bucket.s3.amazonaws.com/user-123/profile_20230101_abc123.jpg"
+        created_at:
+          type: string
+          format: date-time
+          description: Account creation timestamp (ISO 8601)
+          example: "2023-01-01T12:00:00.000000"
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp (ISO 8601)
+          example: "2023-01-01T12:00:00.000000"
+      required:
+        - cognito_id
+        - nickname
+        - created_at
+        - updated_at
+
+    CreateUserRequest:
+      type: object
+      description: Request body for creating a new user
+      properties:
+        nickname:
+          type: string
+          description: |
+            Unique nickname for the user. Must follow validation rules:
+            - 3-20 characters long
+            - Alphanumeric characters, underscores, and hyphens only
+            - Must start and end with alphanumeric character
+            - No consecutive special characters
+            - Cannot be a reserved word
+          pattern: '^[a-zA-Z0-9_-]{3,20}$'
+          minLength: 3
+          maxLength: 20
+          example: "john_doe"
+      required:
+        - nickname
+
+    CreateUserResponse:
+      type: object
+      description: Response after successful user creation
+      properties:
+        message:
+          type: string
+          description: Success message
+          example: "User created successfully"
+        user:
+          $ref: '#/components/schemas/User'
+        created_at:
+          type: string
+          format: date-time
+          description: Request timestamp
+          example: "2023-01-01T12:00:00Z"
+      required:
+        - message
+        - user
+        - created_at
+
+    GetUserResponse:
+      type: object
+      description: Response for user lookup by nickname
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        retrieved_at:
+          type: string
+          format: date-time
+          description: Request timestamp
+          example: "2023-01-01T12:00:00Z"
+      required:
+        - user
+        - retrieved_at
+
+    DeleteUserRequest:
+      type: object
+      description: Optional request body for user deletion
+      properties:
+        reason:
+          type: string
+          description: Optional reason for account deletion
+          maxLength: 500
+          example: "No longer using the service"
+
+    DeleteUserResponse:
+      type: object
+      description: Response after successful user deletion
+      properties:
+        message:
+          type: string
+          description: Success message
+          example: "User account deleted successfully"
+        deleted_user:
+          $ref: '#/components/schemas/User'
+        photos_deleted:
+          type: array
+          description: List of S3 keys for deleted photos
+          items:
+            type: string
+          example: ["user-123/profile_20230101_abc123.jpg", "user-123/profile_20230102_def456.jpg"]
+        deletion_reason:
+          type: string
+          description: Reason for deletion (user-provided or default)
+          example: "User requested deletion"
+        deleted_at:
+          type: string
+          format: date-time
+          description: Deletion timestamp
+          example: "2023-01-01T12:00:00Z"
+        warning:
+          type: string
+          description: Warning about irreversible action
+          example: "This action cannot be undone"
+      required:
+        - message
+        - deleted_user
+        - photos_deleted
+        - deletion_reason
+        - deleted_at
+        - warning
+
+    UploadPhotoRequest:
+      type: object
+      description: Request body for photo upload
+      properties:
+        image:
+          type: string
+          description: |
+            Base64-encoded image data with data URL prefix.
+            Supported formats: JPEG, PNG, GIF
+            Maximum size: 5MB
+          pattern: '^data:image\/(jpeg|jpg|png|gif);base64,[A-Za-z0-9+/=]+$'
+          example: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD..."
+        nickname:
+          type: string
+          description: |
+            Required only for new users (when user doesn't exist).
+            Must be unique and follow nickname validation rules.
+          pattern: '^[a-zA-Z0-9_-]{3,20}$'
+          minLength: 3
+          maxLength: 20
+          example: "new_user123"
+      required:
+        - image
+
+    UploadPhotoResponse:
+      type: object
+      description: Response after successful photo upload
+      properties:
+        message:
+          type: string
+          description: Success message
+          example: "Photo uploaded successfully"
+        photo_url:
+          type: string
+          format: uri
+          description: S3 presigned URL for the uploaded photo (valid for 7 days)
+          example: "https://bucket.s3.amazonaws.com/user-123/profile_20230101_abc123.jpg"
+        s3_key:
+          type: string
+          description: S3 object key for the uploaded photo
+          example: "user-123/profile_20230101_abc123.jpg"
+        size_reduction:
+          type: string
+          description: Percentage reduction in file size after optimization
+          example: "23.4%"
+        user:
+          $ref: '#/components/schemas/User'
+      required:
+        - message
+        - photo_url
+        - s3_key
+        - size_reduction
+        - user
+
+    ErrorResponse:
+      type: object
+      description: Standard error response format
+      properties:
+        error:
+          type: string
+          description: Error message describing what went wrong
+          example: "Nickname already taken"
+        details:
+          type: string
+          description: Additional technical details (may be omitted in production)
+          example: "Database constraint violation"
+        usage:
+          type: string
+          description: Usage guidance for fixing the error
+          example: "POST /users with {\"nickname\": \"your_nickname\"}"
+      required:
+        - error
+
+  responses:
+    BadRequest:
+      description: Bad Request - Invalid input or missing required fields
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            missing_nickname:
+              summary: Missing nickname
+              value:
+                error: "Nickname is required"
+                usage: "POST /users with {\"nickname\": \"your_nickname\"}"
+            invalid_nickname:
+              summary: Invalid nickname format
+              value:
+                error: "Nickname must be between 3 and 20 characters"
+            missing_confirmation:
+              summary: Missing deletion confirmation
+              value:
+                error: "Account deletion requires confirmation"
+                usage: "DELETE /users/{userId}?confirm=true"
+                warning: "This action cannot be undone"
+            image_too_large:
+              summary: Image file too large
+              value:
+                error: "Image too large"
+                max_size_mb: 5
+            invalid_image:
+              summary: Invalid image format
+              value:
+                error: "Invalid image format"
+                details: "cannot identify image file"
+
+    Unauthorized:
+      description: Unauthorized - Missing or invalid JWT token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            missing_token:
+              summary: Missing authorization header
+              value:
+                error: "Missing or invalid authorization header"
+            invalid_token:
+              summary: Invalid JWT token
+              value:
+                error: "Invalid token: signature verification failed"
+
+    Forbidden:
+      description: Forbidden - User lacks permission for the requested operation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            unauthorized_deletion:
+              summary: Attempt to delete another user's account
+              value:
+                error: "Unauthorized: You can only delete your own account"
+                token_user_id: "user-456"
+                target_user_id: "user-123"
+            unauthorized_photo_upload:
+              summary: Attempt to upload photo for another user
+              value:
+                error: "Unauthorized to upload photo for this user"
+
+    NotFound:
+      description: Not Found - Requested resource does not exist
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            user_not_found:
+              summary: User with specified nickname not found
+              value:
+                error: "User not found"
+                nickname: "nonexistent_user"
+            user_not_found_deletion:
+              summary: User to delete not found
+              value:
+                error: "User not found"
+                user_id: "us-east-1:12345678-1234-1234-1234-123456789012"
+
+    Conflict:
+      description: Conflict - Resource already exists or constraint violation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            user_exists:
+              summary: User already exists
+              value:
+                error: "User already exists"
+                user:
+                  cognito_id: "us-east-1:12345678-1234-1234-1234-123456789012"
+                  nickname: "existing_user"
+                  image_url: null
+                  created_at: "2023-01-01T10:00:00.000000"
+                  updated_at: "2023-01-01T10:00:00.000000"
+            nickname_taken:
+              summary: Nickname already taken by another user
+              value:
+                error: "Nickname already taken"
+                nickname: "john_doe"
+
+    InternalServerError:
+      description: Internal Server Error - Unexpected server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            database_error:
+              summary: Database connection error
+              value:
+                error: "Internal server error"
+                details: "Database connection failed"
+            s3_error:
+              summary: S3 upload failure
+              value:
+                error: "Failed to upload image"
+                details: "NoSuchBucket: The specified bucket does not exist"
