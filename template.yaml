@@ -36,6 +36,7 @@ Parameters:
 
 Conditions:
   IsDevEnvironment: !Equals [!Ref Environment, dev]
+  IsProdEnvironment: !Equals [!Ref Environment, prod]
 
 # More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
@@ -72,7 +73,10 @@ Resources:
               - EnvironmentName: !If 
                   - IsDevEnvironment
                   - development
-                  - !Ref Environment
+                  - !If 
+                    - IsProdEnvironment
+                    - production
+                    - !Ref Environment
             Identity:
               Header: Authorization
   PhotoUploadFunction:
