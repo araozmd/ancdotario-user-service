@@ -41,3 +41,4 @@ artifacts:
   files:
     - packaged-template.yaml
     - samconfig-*.toml
+    - pipeline/deploy-*-buildspec.yml
