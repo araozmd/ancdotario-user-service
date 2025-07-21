@@ -68,9 +68,8 @@ Resources:
           CognitoJWTAuthorizer:
             Type: COGNITO_USER_POOLS
             UserPoolArn: !Sub 
-              - "arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${UserPoolId}"
-              - UserPoolId: !Sub "{{resolve:ssm:/anecdotario/${EnvironmentName}/cognito/user-pool-id}}"
-                EnvironmentName: !If 
+              - "arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/{{resolve:ssm:/anecdotario/${EnvironmentName}/cognito/user-pool-id}}"
+              - EnvironmentName: !If 
                   - IsDevEnvironment
                   - development
                   - !Ref Environment
