@@ -15,7 +15,7 @@ Parameters:
   TableName:
     Type: String
     Description: DynamoDB table name for users
-    Default: !Sub "Users-${Environment}"
+    Default: "Users-dev"
   
   KMSKeyId:
     Type: String
@@ -26,12 +26,12 @@ Parameters:
   MaxImageSize:
     Type: Number
     Description: Maximum image size in bytes
-    Default: 5242880  # 5MB
+    Default: "5242880"  # 5MB
   
   ParameterStorePrefix:
     Type: String
     Description: Parameter Store prefix for configuration values
-    Default: !Sub "/anecdotario/${Environment}/user-service"
+    Default: "/anecdotario/dev/user-service"
 
 # More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
@@ -108,7 +108,7 @@ Resources:
         GetUserByNickname:
           Type: Api
           Properties:
-            Path: /users/{nickname}
+            Path: /users/by-nickname/{nickname}
             Method: get
             RequestParameters:
               - method.request.path.nickname:
@@ -211,7 +211,6 @@ Resources:
               KeyType: HASH
           Projection:
             ProjectionType: ALL
-          BillingMode: PAY_PER_REQUEST
       BillingMode: PAY_PER_REQUEST
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
@@ -248,7 +247,7 @@ Resources:
 Outputs:
   # API Gateway endpoint
   UserServiceApi:
-    Description: !Sub "API Gateway endpoint URL for ${Environment} stage"
+    Description: "API Gateway endpoint URL for environment stage"
     Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
     Export:
       Name: !Sub "${AWS::StackName}-ApiEndpoint"
