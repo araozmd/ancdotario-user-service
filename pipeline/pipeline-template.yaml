@@ -92,6 +92,12 @@ Resources:
                   - cloudformation:DeleteChangeSet
                   - cloudformation:ListStackResources
                   - cloudformation:ValidateTemplate
+                  - cloudformation:ListStacks
+                  - cloudformation:TagResource
+                  - cloudformation:UntagResource
+                  - cloudformation:ListTagsForResource
+                  - cloudformation:GetStackPolicy
+                  - cloudformation:SetStackPolicy
                 Resource: 
                   - !Sub "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/user-service-*/*"
                   - !Sub "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/aws-sam-cli-managed-*/*"
@@ -195,6 +201,23 @@ Resources:
                   - ssm:GetParametersByPath
                 Resource: 
                   - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/anecdotario/*"
+              # CloudWatch Logs permissions for SAM managed resources
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                  - logs:DeleteLogGroup
+                  - logs:PutRetentionPolicy
+                Resource: "*"
+              # Additional CloudFormation permissions for managed stack operations
+              - Effect: Allow
+                Action:
+                  - cloudformation:ListStacks
+                  - cloudformation:DescribeStacks
+                Resource: "*"
 
   # CodePipeline Service Role
   CodePipelineServiceRole:
