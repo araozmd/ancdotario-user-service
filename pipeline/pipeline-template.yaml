@@ -176,7 +176,7 @@ Resources:
                 - pip install aws-sam-cli
             build:
               commands:
-                - sam deploy --config-file samconfig-dev.toml --no-confirm-changeset --no-fail-on-empty-changeset --template-file template.yaml
+                - sam deploy --config-file samconfig-dev.toml --no-confirm-changeset --no-fail-on-empty-changeset --template-file packaged-template.yaml
 
   # Deploy Staging Project  
   DeployStagingProject:
@@ -205,7 +205,7 @@ Resources:
                 - pip install aws-sam-cli
             build:
               commands:
-                - sam deploy --config-file samconfig-staging.toml --no-confirm-changeset --no-fail-on-empty-changeset --template-file template.yaml
+                - sam deploy --config-file samconfig-staging.toml --no-confirm-changeset --no-fail-on-empty-changeset --template-file packaged-template.yaml
 
   # Deploy Production Project
   DeployProdProject:
@@ -234,7 +234,7 @@ Resources:
                 - pip install aws-sam-cli
             build:
               commands:
-                - sam deploy --config-file samconfig-prod.toml --no-confirm-changeset --no-fail-on-empty-changeset --template-file template.yaml
+                - sam deploy --config-file samconfig-prod.toml --no-confirm-changeset --no-fail-on-empty-changeset --template-file packaged-template.yaml
 
   # CodePipeline
   Pipeline:

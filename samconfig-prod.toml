@@ -17,7 +17,6 @@ lint = true
 capabilities = "CAPABILITY_IAM"
 confirm_changeset = true
 resolve_s3 = true
-template_file = "template.yaml"
 fail_on_empty_changeset = false
 parameter_overrides = [
     "Environment=prod",
