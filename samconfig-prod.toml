@@ -16,7 +16,6 @@ lint = true
 [default.deploy.parameters]
 capabilities = "CAPABILITY_IAM"
 confirm_changeset = false
-resolve_s3 = true
 fail_on_empty_changeset = false
 region = "us-east-1"
 s3_bucket = "anecdotario-sam-artifacts-prod-us-east-1"
@@ -33,7 +32,7 @@ tags = [
 ]
 
 [default.package.parameters]
-resolve_s3 = true
+s3_bucket = "anecdotario-sam-artifacts-prod-us-east-1"
 
 [default.sync.parameters]
 watch = false
