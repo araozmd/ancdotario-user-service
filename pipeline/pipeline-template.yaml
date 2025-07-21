@@ -71,6 +71,88 @@ Resources:
                 Action:
                   - s3:ListBucket
                 Resource: !GetAtt ArtifactsBucket.Arn
+        - PolicyName: SAMDeploymentAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # CloudFormation permissions for SAM deployment
+              - Effect: Allow
+                Action:
+                  - cloudformation:CreateStack
+                  - cloudformation:UpdateStack
+                  - cloudformation:DeleteStack
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:DescribeStackResources
+                  - cloudformation:GetTemplate
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:DeleteChangeSet
+                  - cloudformation:ListStackResources
+                  - cloudformation:ValidateTemplate
+                Resource: 
+                  - !Sub "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/user-service-*/*"
+                  - !Sub "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/aws-sam-cli-managed-*/*"
+              # Lambda permissions for SAM deployment
+              - Effect: Allow
+                Action:
+                  - lambda:*
+                Resource: "*"
+              # API Gateway permissions for SAM deployment
+              - Effect: Allow
+                Action:
+                  - apigateway:*
+                Resource: "*"
+              # DynamoDB permissions for SAM deployment
+              - Effect: Allow
+                Action:
+                  - dynamodb:*
+                Resource: "*"
+              # IAM permissions for SAM deployment
+              - Effect: Allow
+                Action:
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:GetRole
+                  - iam:PassRole
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:PutRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:GetRolePolicy
+                  - iam:TagRole
+                  - iam:UntagRole
+                Resource: 
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/user-service-*"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/*-user-service-*"
+              # S3 permissions for Lambda deployment packages and SAM artifacts
+              - Effect: Allow
+                Action:
+                  - s3:CreateBucket
+                  - s3:DeleteBucket
+                  - s3:GetBucketLocation
+                  - s3:GetBucketPolicy
+                  - s3:PutBucketPolicy
+                  - s3:DeleteBucketPolicy
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                  - s3:GetObjectVersion
+                Resource: 
+                  - "arn:aws:s3:::aws-sam-cli-managed-default*"
+                  - "arn:aws:s3:::aws-sam-cli-managed-default*/*"
+                  - !Sub "arn:aws:s3:::aws-sam-cli-sourcebucket-*"
+                  - !Sub "arn:aws:s3:::aws-sam-cli-sourcebucket-*/*"
+              # SSM Parameter Store access for application configuration
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                  - ssm:GetParametersByPath
+                Resource: 
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/anecdotario/*"
 
   # CodePipeline Service Role
   CodePipelineServiceRole:
