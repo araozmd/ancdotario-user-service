@@ -102,10 +102,10 @@ Resources:
                   - codebuild:BatchGetBuilds
                   - codebuild:StartBuild
                 Resource: 
-                  - !Ref BuildProject
-                  - !Ref DeployDevProject
-                  - !Ref DeployStagingProject
-                  - !Ref DeployProdProject
+                  - !GetAtt BuildProject.Arn
+                  - !GetAtt DeployDevProject.Arn
+                  - !GetAtt DeployStagingProject.Arn
+                  - !GetAtt DeployProdProject.Arn
               - Effect: Allow
                 Action:
                   - cloudformation:*
