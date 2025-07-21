@@ -178,6 +178,8 @@ Resources:
                   - "arn:aws:s3:::aws-sam-cli-managed-default*/*"
                   - !Sub "arn:aws:s3:::aws-sam-cli-sourcebucket-*"
                   - !Sub "arn:aws:s3:::aws-sam-cli-sourcebucket-*/*"
+                  - "arn:aws:s3:::anecdotario-sam-artifacts-*"
+                  - "arn:aws:s3:::anecdotario-sam-artifacts-*/*"
               # Broad S3 permissions for bucket listing and operations (needed for SAM)
               - Effect: Allow
                 Action:

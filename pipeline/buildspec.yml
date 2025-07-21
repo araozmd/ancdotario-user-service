@@ -12,6 +12,39 @@ phases:
       
   pre_build:
     commands:
+      - echo "Creating SAM artifact buckets..."
+      - |
+        # Create SAM artifact buckets for each environment if they don't exist
+        BUCKETS=(
+          "anecdotario-sam-artifacts-us-east-1"
+          "anecdotario-sam-artifacts-staging-us-east-1"
+          "anecdotario-sam-artifacts-prod-us-east-1"
+        )
+        
+        for bucket in "${BUCKETS[@]}"; do
+          echo "Checking if bucket $bucket exists..."
+          if aws s3 ls "s3://$bucket" 2>&1 | grep -q 'NoSuchBucket\|does not exist'; then
+            echo "Creating bucket $bucket..."
+            aws s3 mb "s3://$bucket" --region us-east-1
+            aws s3api put-bucket-encryption \
+              --bucket "$bucket" \
+              --server-side-encryption-configuration '{
+                "Rules": [
+                  {
+                    "ApplyServerSideEncryptionByDefault": {
+                      "SSEAlgorithm": "AES256"
+                    }
+                  }
+                ]
+              }'
+            aws s3api put-bucket-versioning \
+              --bucket "$bucket" \
+              --versioning-configuration Status=Enabled
+            echo "Bucket $bucket created successfully"
+          else
+            echo "Bucket $bucket already exists"
+          fi
+        done
       - echo "Running tests..."
       - |
         # Test all Lambda functions

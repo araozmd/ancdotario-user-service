@@ -19,6 +19,7 @@ confirm_changeset = false
 resolve_s3 = true
 fail_on_empty_changeset = false
 region = "us-east-1"
+s3_bucket = "anecdotario-sam-artifacts-us-east-1"
 parameter_overrides = [
     "Environment=dev",
     "TableName=Users-dev",
