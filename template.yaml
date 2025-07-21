@@ -3,22 +3,48 @@ Transform: AWS::Serverless-2016-10-31
 Description: >
   user-service
 
-  Sample SAM Template for user-service
+  Anecdotario User Service - Manages user accounts, authentication, and certification
+
+Parameters:
+  Environment:
+    Type: String
+    Description: Environment name (dev, staging, prod)
+    AllowedValues: [dev, staging, prod]
+    Default: dev
   
+  TableName:
+    Type: String
+    Description: DynamoDB table name for users
+    Default: !Sub "Users-${Environment}"
+  
+  KMSKeyId:
+    Type: String
+    Description: KMS Key ID for encryption (optional)
+    Default: ""
+
 # More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
   Function:
     Timeout: 3
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+        USER_TABLE_NAME: !Ref UserTable
+        KMS_KEY_ID: !Ref KMSKeyId
+        ALLOWED_ORIGINS: !Sub "https://${Environment}.anecdotario.com,https://anecdotario.com"
 
 Resources:
   HelloWorldFunction:
     Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
     Properties:
       CodeUri: hello-world/
-      Handler: app.lambdaHandler
-      Runtime: nodejs20.x
+      Handler: app.lambda_handler
+      Runtime: python3.12
       Architectures:
         - x86_64
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserTable
       Events:
         HelloWorld:
           Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
@@ -26,16 +52,80 @@ Resources:
             Path: /hello
             Method: get
 
+  UserTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref TableName
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: email
+          AttributeType: S
+        - AttributeName: is_certified
+          AttributeType: S
+        - AttributeName: created_at
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: email-index
+          KeySchema:
+            - AttributeName: email
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+          BillingMode: PAY_PER_REQUEST
+        - IndexName: certified-index
+          KeySchema:
+            - AttributeName: is_certified
+              KeyType: HASH
+            - AttributeName: created_at
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          BillingMode: PAY_PER_REQUEST
+        - IndexName: created-at-index
+          KeySchema:
+            - AttributeName: created_at
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+          BillingMode: PAY_PER_REQUEST
+      BillingMode: PAY_PER_REQUEST
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: user-service
+
 Outputs:
-  # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
-  # Find out more about other implicit resources you can reference within SAM
-  # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
-  HelloWorldApi:
-    Description: "API Gateway endpoint URL for Prod stage for Hello World function"
+  # API Gateway endpoint
+  UserServiceApi:
+    Description: !Sub "API Gateway endpoint URL for ${Environment} stage"
     Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/hello/"
-  HelloWorldFunction:
-    Description: "Hello World Lambda Function ARN"
+    Export:
+      Name: !Sub "${AWS::StackName}-ApiEndpoint"
+  
+  # Lambda function
+  UserServiceFunction:
+    Description: "User Service Lambda Function ARN"
     Value: !GetAtt HelloWorldFunction.Arn
-  HelloWorldFunctionIamRole:
-    Description: "Implicit IAM Role created for Hello World function"
-    Value: !GetAtt HelloWorldFunctionRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-FunctionArn"
+  
+  # DynamoDB table
+  UserTable:
+    Description: "DynamoDB table for users"
+    Value: !Ref UserTable
+    Export:
+      Name: !Sub "${AWS::StackName}-UserTable"
+  
+  # Environment
+  Environment:
+    Description: "Deployment environment"
+    Value: !Ref Environment
+    Export:
+      Name: !Sub "${AWS::StackName}-Environment"

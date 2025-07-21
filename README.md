@@ -1,127 +1,318 @@
-# user-service
+# Anecdotario User Service
 
-This project contains source code and supporting files for a serverless application that you can deploy with the SAM CLI. It includes the following files and folders.
+A serverless AWS Lambda microservice for managing user accounts, authentication, and certification in the Anecdotario platform. Built with Python 3.12 LTS and deployed using AWS SAM.
 
-- hello-world - Code for the application's Lambda function.
-- events - Invocation events that you can use to invoke the function.
-- hello-world/tests - Unit tests for the application code. 
-- template.yaml - A template that defines the application's AWS resources.
+## 🏗️ Architecture
 
-The application uses several AWS resources, including Lambda functions and an API Gateway API. These resources are defined in the `template.yaml` file in this project. You can update the template to add AWS resources through the same deployment process that updates your application code.
+- **Runtime**: Python 3.12 LTS (AWS Lambda)
+- **Database**: DynamoDB with PynamoDB ORM
+- **API**: AWS API Gateway with Lambda Proxy Integration
+- **Testing**: pytest framework
+- **Deployment**: AWS SAM (Serverless Application Model)
 
-If you prefer to use an integrated development environment (IDE) to build and test your application, you can use the AWS Toolkit.  
-The AWS Toolkit is an open source plug-in for popular IDEs that uses the SAM CLI to build and deploy serverless applications on AWS. The AWS Toolkit also adds a simplified step-through debugging experience for Lambda function code. See the following links to get started.
+## 📁 Project Structure
 
-* [CLion](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [GoLand](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [IntelliJ](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [WebStorm](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [Rider](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [PhpStorm](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [PyCharm](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [RubyMine](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [DataGrip](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [VS Code](https://docs.aws.amazon.com/toolkit-for-vscode/latest/userguide/welcome.html)
-* [Visual Studio](https://docs.aws.amazon.com/toolkit-for-visual-studio/latest/user-guide/welcome.html)
+```
+hello-world/          # Lambda function code (self-contained)
+├── app.py           # Main Lambda handler
+├── models/          # DynamoDB models  
+│   ├── __init__.py
+│   └── user.py      # User model with PynamoDB
+├── tests/unit/      # Unit tests with pytest
+│   └── test_handler.py
+└── requirements.txt # Python dependencies
 
-## Deploy the sample application
+events/              # Test events for local invocation
+template.yaml        # SAM template defining AWS resources
+samconfig-*.toml     # Environment-specific SAM configurations
+```
 
-The Serverless Application Model Command Line Interface (SAM CLI) is an extension of the AWS CLI that adds functionality for building and testing Lambda applications. It uses Docker to run your functions in an Amazon Linux environment that matches Lambda. It can also emulate your application's build environment and API.
+## 🐍 Python Setup
 
-To use the SAM CLI, you need the following tools.
+This project uses **Python 3.12 LTS** for maximum compatibility and long-term support.
 
-* SAM CLI - [Install the SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-install.html)
-* Node.js - [Install Node.js 20](https://nodejs.org/en/), including the NPM package management tool.
-* Docker - [Install Docker community edition](https://hub.docker.com/search/?type=edition&offering=community)
+### Prerequisites
 
-To build and deploy your application for the first time, run the following in your shell:
+1. **Install pyenv** (if not already installed):
+   ```bash
+   # macOS
+   brew install pyenv
+   
+   # Add to your shell profile (.bashrc, .zshrc, etc.)
+   export PATH="$HOME/.pyenv/bin:$PATH"
+   eval "$(pyenv init -)"
+   ```
 
+2. **Install Python 3.12.8**:
+   ```bash
+   pyenv install 3.12.8
+   ```
+
+3. **Set Python version for this project**:
+   ```bash
+   cd anecdotario-user-service/
+   pyenv local 3.12.8  # Uses .python-version file
+   python --version     # Should show Python 3.12.8
+   ```
+
+### Installing Dependencies
+
+```bash
+# Production dependencies
+cd hello-world/
+pip install -r requirements.txt
+
+# Development dependencies (for code quality tools)
+pip install -r requirements-dev.txt
+
+# Install pre-commit hooks
+pre-commit install
+```
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- [Python 3.12.8](https://www.python.org/downloads/) (via pyenv)
+- [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-install.html)
+- [Docker](https://hub.docker.com/search/?type=edition&offering=community) (for local testing)
+- [AWS CLI](https://aws.amazon.com/cli/) (configured with credentials)
+
+### Local Development
+
+1. **Setup Python environment**:
+   ```bash
+   pyenv install 3.12.8
+   pyenv local 3.12.8
+   ```
+
+2. **Install dependencies**:
+   ```bash
+   cd hello-world/
+   pip install -r requirements.txt
+   ```
+
+3. **Run code quality checks**:
+   ```bash
+   # Run all quality checks
+   make quality
+   
+   # Or run individually
+   make lint          # Linting with ruff
+   make format        # Code formatting with black
+   make type-check    # Type checking with mypy
+   make test          # Unit tests
+   make test-cov      # Tests with coverage
+   ```
+
+4. **Build the application**:
+   ```bash
+   sam build
+   ```
+
+5. **Test locally**:
+   ```bash
+   # Start local API
+   sam local start-api
+   
+   # Test the endpoint
+   curl http://localhost:3000/hello
+   ```
+
+## 🚀 Deployment
+
+This service supports **multi-environment deployments** with separate configurations for development, staging, and production.
+
+### Environment-Specific Deployment
+
+#### Development Environment
 ```bash
 sam build
-sam deploy --guided
+sam deploy --config-file samconfig-dev.toml
 ```
 
-The first command will build the source of your application. The second command will package and deploy your application to AWS, with a series of prompts:
-
-* **Stack Name**: The name of the stack to deploy to CloudFormation. This should be unique to your account and region, and a good starting point would be something matching your project name.
-* **AWS Region**: The AWS region you want to deploy your app to.
-* **Confirm changes before deploy**: If set to yes, any change sets will be shown to you before execution for manual review. If set to no, the AWS SAM CLI will automatically deploy application changes.
-* **Allow SAM CLI IAM role creation**: Many AWS SAM templates, including this example, create AWS IAM roles required for the AWS Lambda function(s) included to access AWS services. By default, these are scoped down to minimum required permissions. To deploy an AWS CloudFormation stack which creates or modifies IAM roles, the `CAPABILITY_IAM` value for `capabilities` must be provided. If permission isn't provided through this prompt, to deploy this example you must explicitly pass `--capabilities CAPABILITY_IAM` to the `sam deploy` command.
-* **Save arguments to samconfig.toml**: If set to yes, your choices will be saved to a configuration file inside the project, so that in the future you can just re-run `sam deploy` without parameters to deploy changes to your application.
-
-You can find your API Gateway Endpoint URL in the output values displayed after deployment.
-
-## Use the SAM CLI to build and test locally
-
-Build your application with the `sam build` command.
-
+#### Staging Environment  
 ```bash
-user-service$ sam build
+sam build
+sam deploy --config-file samconfig-staging.toml
 ```
 
-The SAM CLI installs dependencies defined in `hello-world/package.json`, creates a deployment package, and saves it in the `.aws-sam/build` folder.
-
-Test a single function by invoking it directly with a test event. An event is a JSON document that represents the input that the function receives from the event source. Test events are included in the `events` folder in this project.
-
-Run functions locally and invoke them with the `sam local invoke` command.
-
+#### Production Environment
 ```bash
-user-service$ sam local invoke HelloWorldFunction --event events/event.json
+sam build
+sam deploy --config-file samconfig-prod.toml
 ```
 
-The SAM CLI can also emulate your application's API. Use the `sam local start-api` to run the API locally on port 3000.
+### Environment Resources
 
+Each environment creates:
+- **Stack**: `user-service-{env}` (e.g., `user-service-dev`)
+- **DynamoDB Table**: `Users-{env}` (e.g., `Users-dev`)
+- **Lambda Function**: Environment-specific with proper IAM permissions
+- **API Gateway**: Separate endpoints per environment
+
+### First-Time Deployment
+
+For first-time deployment to any environment:
+
+1. **Configure AWS credentials**:
+   ```bash
+   aws configure
+   ```
+
+2. **Deploy to development** (recommended first):
+   ```bash
+   sam build
+   sam deploy --config-file samconfig-dev.toml
+   ```
+
+3. **Test the deployment**:
+   ```bash
+   # Get the API endpoint from CloudFormation outputs
+   aws cloudformation describe-stacks \
+     --stack-name user-service-dev \
+     --query 'Stacks[0].Outputs[?OutputKey==`UserServiceApi`].OutputValue' \
+     --output text
+   ```
+
+## 🧪 Testing
+
+### Unit Tests
 ```bash
-user-service$ sam local start-api
-user-service$ curl http://localhost:3000/
+# Run unit tests
+make test
+
+# Run with coverage report
+make test-cov
+
+# Run specific test file
+cd hello-world/
+pytest tests/unit/test_validation.py -v
 ```
 
-The SAM CLI reads the application template to determine the API's routes and the functions that they invoke. The `Events` property on each function's definition includes the route and method for each path.
-
-```yaml
-      Events:
-        HelloWorld:
-          Type: Api
-          Properties:
-            Path: /hello
-            Method: get
-```
-
-## Add a resource to your application
-The application template uses AWS Serverless Application Model (AWS SAM) to define application resources. AWS SAM is an extension of AWS CloudFormation with a simpler syntax for configuring common serverless application resources such as functions, triggers, and APIs. For resources not included in [the SAM specification](https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md), you can use standard [AWS CloudFormation](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-template-resource-type-ref.html) resource types.
-
-## Fetch, tail, and filter Lambda function logs
-
-To simplify troubleshooting, SAM CLI has a command called `sam logs`. `sam logs` lets you fetch logs generated by your deployed Lambda function from the command line. In addition to printing the logs on the terminal, this command has several nifty features to help you quickly find the bug.
-
-`NOTE`: This command works for all AWS Lambda functions; not just the ones you deploy using SAM.
-
+### Integration Tests
 ```bash
-user-service$ sam logs -n HelloWorldFunction --stack-name user-service --tail
+# Run integration tests (requires running API)
+cd hello-world/
+pytest tests/integration/ -v -m integration
+
+# Run slow integration tests
+pytest tests/integration/ -v -m "integration and slow"
 ```
 
-You can find more information and examples about filtering Lambda function logs in the [SAM CLI Documentation](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-logging.html).
-
-## Unit tests
-
-Tests are defined in the `hello-world/tests` folder in this project. Use NPM to install the [Mocha test framework](https://mochajs.org/) and run unit tests.
-
+### Local Function Testing
 ```bash
-user-service$ cd hello-world
-hello-world$ npm install
-hello-world$ npm run test
+# Test Lambda function directly
+sam local invoke HelloWorldFunction --event events/event.json
+
+# Test with custom event
+echo '{"httpMethod":"GET","path":"/hello"}' | sam local invoke HelloWorldFunction
 ```
 
-## Cleanup
-
-To delete the sample application that you created, use the AWS CLI. Assuming you used your project name for the stack name, you can run the following:
-
+### Local API Testing
 ```bash
-sam delete --stack-name user-service
+# Start local API server
+make local-api
+# OR
+sam local start-api
+
+# Test endpoints
+curl http://localhost:3000/hello
+
+# Test user creation endpoint
+curl -X POST http://localhost:3000/users \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Test User","email":"test@example.com"}'
 ```
 
-## Resources
+### Code Quality
+```bash
+# Run all quality checks
+make quality
 
-See the [AWS SAM developer guide](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/what-is-sam.html) for an introduction to SAM specification, the SAM CLI, and serverless application concepts.
+# Format code
+make format
 
-Next, you can use AWS Serverless Application Repository to deploy ready to use Apps that go beyond hello world samples and learn how authors developed their applications: [AWS Serverless Application Repository main page](https://aws.amazon.com/serverless/serverlessrepo/)
+# Check linting
+make lint
+
+# Type checking
+make type-check
+```
+
+## 📊 Monitoring & Logs
+
+### View Logs
+```bash
+# Development environment
+sam logs -n HelloWorldFunction --stack-name user-service-dev --tail
+
+# Production environment  
+sam logs -n HelloWorldFunction --stack-name user-service-prod --tail
+```
+
+### CloudWatch Logs
+Each environment has separate log groups:
+- `/aws/lambda/user-service-dev-HelloWorldFunction-*`
+- `/aws/lambda/user-service-staging-HelloWorldFunction-*`
+- `/aws/lambda/user-service-prod-HelloWorldFunction-*`
+
+## 🗃️ Database Schema
+
+### User Model
+The service manages users with the following attributes:
+
+- **id**: Primary key (UUID)
+- **name**: User's display name
+- **email**: Email address (globally unique)
+- **is_certified**: Certification status (boolean)
+- **profile_image**: Optional profile image URL
+- **created_at**: Account creation timestamp
+- **updated_at**: Last modification timestamp
+
+### DynamoDB Global Secondary Indexes
+- **email-index**: Fast user lookup by email
+- **certified-index**: Query certified users with date range
+- **created-at-index**: Chronological user queries
+
+## 🧹 Cleanup
+
+### Delete Environment Stacks
+```bash
+# Delete development environment
+sam delete --stack-name user-service-dev
+
+# Delete staging environment
+sam delete --stack-name user-service-staging
+
+# Delete production environment (USE WITH CAUTION!)
+sam delete --stack-name user-service-prod
+```
+
+## 🔧 Development Tools
+
+### Recommended IDEs
+- **VS Code** with AWS Toolkit extension
+- **PyCharm** with AWS Toolkit plugin
+- **IntelliJ IDEA** with AWS Toolkit plugin
+
+### Useful Commands
+```bash
+# Validate SAM template
+sam validate
+
+# Check Python code style
+cd hello-world/
+python -m py_compile app.py models/user.py
+
+# Format code (if using black)
+pip install black
+black app.py models/ tests/
+```
+
+## 📚 Resources
+
+- [AWS SAM Developer Guide](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/what-is-sam.html)
+- [PynamoDB Documentation](https://pynamodb.readthedocs.io/)
+- [AWS Lambda Python Runtime](https://docs.aws.amazon.com/lambda/latest/dg/lambda-python.html)
+- [pytest Documentation](https://docs.pytest.org/)

@@ -1,0 +1,52 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: debug-statements
+      - id: check-json
+
+  - repo: https://github.com/psf/black
+    rev: 23.11.0
+    hooks:
+      - id: black
+        language_version: python3.12
+        files: ^hello-world/
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.1.6
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        files: ^hello-world/
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.7.1
+    hooks:
+      - id: mypy
+        additional_dependencies: [pydantic>=2.5.0, boto3-stubs, pynamodb]
+        files: ^hello-world/
+        exclude: ^hello-world/tests/
+
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: bash -c 'cd hello-world && python -m pytest tests/unit/ -v'
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [commit]
+
+  - repo: local
+    hooks:
+      - id: aws-sam-validate
+        name: SAM template validation
+        entry: sam validate
+        language: system
+        files: ^template\.yaml$
+        pass_filenames: false

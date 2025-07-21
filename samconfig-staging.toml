@@ -1,0 +1,48 @@
+# SAM configuration for Staging environment
+# Deploy with: sam deploy --config-file samconfig-staging.toml
+
+version = 0.1
+
+[default.global.parameters]
+stack_name = "user-service-staging"
+
+[default.build.parameters]
+cached = true
+parallel = true
+
+[default.validate.parameters]
+lint = true
+
+[default.deploy.parameters]
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = true
+resolve_s3 = true
+parameter_overrides = [
+    "Environment=staging",
+    "TableName=Users-staging"
+]
+tags = [
+    "Environment=staging",
+    "Service=user-service",
+    "Owner=qa-team"
+]
+
+[default.package.parameters]
+resolve_s3 = true
+
+[default.sync.parameters]
+watch = false
+
+[default.local_start_api.parameters]
+warm_containers = "LAZY"
+parameter_overrides = [
+    "Environment=staging",
+    "TableName=Users-staging"
+]
+
+[default.local_start_lambda.parameters]
+warm_containers = "LAZY"
+parameter_overrides = [
+    "Environment=staging",
+    "TableName=Users-staging"
+]

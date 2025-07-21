@@ -1,0 +1,50 @@
+# SAM configuration for Production environment
+# Deploy with: sam deploy --config-file samconfig-prod.toml
+
+version = 0.1
+
+[default.global.parameters]
+stack_name = "user-service-prod"
+
+[default.build.parameters]
+cached = true
+parallel = true
+
+[default.validate.parameters]
+lint = true
+
+[default.deploy.parameters]
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = true
+resolve_s3 = true
+fail_on_empty_changeset = false
+parameter_overrides = [
+    "Environment=prod",
+    "TableName=Users-prod"
+]
+tags = [
+    "Environment=prod",
+    "Service=user-service",
+    "Owner=platform-team",
+    "CostCenter=production"
+]
+
+[default.package.parameters]
+resolve_s3 = true
+
+[default.sync.parameters]
+watch = false
+
+[default.local_start_api.parameters]
+warm_containers = "LAZY"
+parameter_overrides = [
+    "Environment=prod",
+    "TableName=Users-prod"
+]
+
+[default.local_start_lambda.parameters]
+warm_containers = "LAZY"
+parameter_overrides = [
+    "Environment=prod",
+    "TableName=Users-prod"
+]
