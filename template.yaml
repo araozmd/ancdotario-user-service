@@ -82,7 +82,7 @@ Resources:
       Handler: app.lambda_handler
       Runtime: python3.12
       Architectures:
-        - arm64
+        - x86_64
       MemorySize: 512  # Increased for image processing
       Timeout: 30      # Longer timeout for image processing
       Policies:
@@ -116,7 +116,7 @@ Resources:
       Handler: app.lambda_handler
       Runtime: python3.12
       Architectures:
-        - arm64
+        - x86_64
       MemorySize: 128  # Minimal memory for read operations
       Timeout: 5       # Short timeout for simple queries
       Policies:
@@ -148,7 +148,7 @@ Resources:
       Handler: app.lambda_handler
       Runtime: python3.12
       Architectures:
-        - arm64
+        - x86_64
       MemorySize: 128  # Minimal memory for write operations
       Timeout: 10      # Slightly longer timeout for database writes
       Policies:
@@ -180,7 +180,7 @@ Resources:
       Handler: app.lambda_handler
       Runtime: python3.12
       Architectures:
-        - arm64
+        - x86_64
       MemorySize: 256  # More memory for S3 operations
       Timeout: 30      # Longer timeout for photo cleanup
       Policies:
