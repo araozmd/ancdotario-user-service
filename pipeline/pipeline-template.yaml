@@ -207,6 +207,8 @@ Resources:
                   - s3:GetBucketNotification
                   - s3:PutBucketLifecycleConfiguration
                   - s3:GetBucketLifecycleConfiguration
+                  - s3:PutLifecycleConfiguration
+                  - s3:GetLifecycleConfiguration
                   - s3:PutBucketPublicAccessBlock
                   - s3:GetBucketPublicAccessBlock
                   - s3:PutBucketCors
