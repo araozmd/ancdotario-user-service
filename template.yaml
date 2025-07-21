@@ -32,6 +32,10 @@ Parameters:
     Type: String
     Description: Parameter Store prefix for configuration values
     Default: "/anecdotario/dev/user-service"
+  
+
+Conditions:
+  IsDevEnvironment: !Equals [!Ref Environment, dev]
 
 # More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
@@ -48,6 +52,30 @@ Globals:
         PARAMETER_STORE_PREFIX: !Ref ParameterStorePrefix
 
 Resources:
+  # API Gateway with JWT Authorizer
+  UserServiceApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub "${AWS::StackName}-api"
+      StageName: Prod
+      Cors:
+        AllowOrigin: "'*'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowMethods: "'GET,POST,DELETE,OPTIONS'"
+      Auth:
+        DefaultAuthorizer: CognitoJWTAuthorizer
+        Authorizers:
+          CognitoJWTAuthorizer:
+            Type: COGNITO_USER_POOLS
+            UserPoolArn: !Sub 
+              - "arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${UserPoolId}"
+              - UserPoolId: !Sub "{{resolve:ssm:/anecdotario/${EnvironmentName}/cognito/user-pool-id}}"
+                EnvironmentName: !If 
+                  - IsDevEnvironment
+                  - development
+                  - !Ref Environment
+            Identity:
+              Header: Authorization
   PhotoUploadFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -55,7 +83,7 @@ Resources:
       Handler: app.lambda_handler
       Runtime: python3.12
       Architectures:
-        - x86_64
+        - arm64
       MemorySize: 512  # Increased for image processing
       Timeout: 30      # Longer timeout for image processing
       Policies:
@@ -76,11 +104,11 @@ Resources:
         PhotoUpload:
           Type: Api
           Properties:
+            RestApiId: !Ref UserServiceApi
             Path: /users/{userId}/photo
             Method: post
-            RequestParameters:
-              - method.request.header.Authorization:
-                  Required: true
+            Auth:
+              Authorizer: CognitoJWTAuthorizer
 
   UserLookupFunction:
     Type: AWS::Serverless::Function
@@ -89,7 +117,7 @@ Resources:
       Handler: app.lambda_handler
       Runtime: python3.12
       Architectures:
-        - x86_64
+        - arm64
       MemorySize: 128  # Minimal memory for read operations
       Timeout: 5       # Short timeout for simple queries
       Policies:
@@ -108,13 +136,11 @@ Resources:
         GetUserByNickname:
           Type: Api
           Properties:
+            RestApiId: !Ref UserServiceApi
             Path: /users/by-nickname/{nickname}
             Method: get
-            RequestParameters:
-              - method.request.path.nickname:
-                  Required: true
-              - method.request.header.Authorization:
-                  Required: true
+            Auth:
+              Authorizer: CognitoJWTAuthorizer
 
   UserCreateFunction:
     Type: AWS::Serverless::Function
@@ -123,7 +149,7 @@ Resources:
       Handler: app.lambda_handler
       Runtime: python3.12
       Architectures:
-        - x86_64
+        - arm64
       MemorySize: 128  # Minimal memory for write operations
       Timeout: 10      # Slightly longer timeout for database writes
       Policies:
@@ -142,11 +168,11 @@ Resources:
         CreateUser:
           Type: Api
           Properties:
+            RestApiId: !Ref UserServiceApi
             Path: /users
             Method: post
-            RequestParameters:
-              - method.request.header.Authorization:
-                  Required: true
+            Auth:
+              Authorizer: CognitoJWTAuthorizer
 
   UserDeleteFunction:
     Type: AWS::Serverless::Function
@@ -155,7 +181,7 @@ Resources:
       Handler: app.lambda_handler
       Runtime: python3.12
       Architectures:
-        - x86_64
+        - arm64
       MemorySize: 256  # More memory for S3 operations
       Timeout: 30      # Longer timeout for photo cleanup
       Policies:
@@ -176,21 +202,19 @@ Resources:
         DeleteUserSelf:
           Type: Api
           Properties:
+            RestApiId: !Ref UserServiceApi
             Path: /users
             Method: delete
-            RequestParameters:
-              - method.request.header.Authorization:
-                  Required: true
+            Auth:
+              Authorizer: CognitoJWTAuthorizer
         DeleteUserById:
           Type: Api
           Properties:
+            RestApiId: !Ref UserServiceApi
             Path: /users/{userId}
             Method: delete
-            RequestParameters:
-              - method.request.path.userId:
-                  Required: true
-              - method.request.header.Authorization:
-                  Required: true
+            Auth:
+              Authorizer: CognitoJWTAuthorizer
 
   UserTable:
     Type: AWS::DynamoDB::Table
@@ -246,9 +270,9 @@ Resources:
 
 Outputs:
   # API Gateway endpoint
-  UserServiceApi:
+  UserServiceApiEndpoint:
     Description: "API Gateway endpoint URL for environment stage"
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
+    Value: !Sub "https://${UserServiceApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
     Export:
       Name: !Sub "${AWS::StackName}-ApiEndpoint"
   

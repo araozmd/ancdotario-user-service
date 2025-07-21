@@ -6,7 +6,12 @@ import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'shared'))
 from models.user import User
 from config import config
-from auth import validate_request_auth, handle_options_request, create_response, create_error_response
+# Use simplified auth when API Gateway handles JWT validation
+try:
+    from auth_simplified import get_authenticated_user, handle_options_request, create_response, create_error_response
+except ImportError:
+    # Fallback to full auth module if simplified not available
+    from auth import validate_request_auth as get_authenticated_user, handle_options_request, create_response, create_error_response
 
 
 def lambda_handler(event, context):
@@ -36,8 +41,8 @@ def lambda_handler(event, context):
 def handle_user_lookup(event):
     """Handle GET request to retrieve user by nickname"""
     try:
-        # Validate JWT token
-        decoded_token, error_response = validate_request_auth(event)
+        # Get authenticated user from API Gateway context
+        claims, error_response = get_authenticated_user(event)
         if error_response:
             return error_response
         

@@ -7,7 +7,12 @@ import re
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'shared'))
 from models.user import User
 from config import config
-from auth import validate_request_auth, handle_options_request, create_response, create_error_response
+# Use simplified auth when API Gateway handles JWT validation
+try:
+    from auth_simplified import get_authenticated_user, handle_options_request, create_response, create_error_response
+except ImportError:
+    # Fallback to full auth module if simplified not available
+    from auth import validate_request_auth as get_authenticated_user, handle_options_request, create_response, create_error_response
 
 
 def lambda_handler(event, context):
@@ -35,13 +40,13 @@ def lambda_handler(event, context):
 def handle_user_creation(event):
     """Handle POST request to create a new user"""
     try:
-        # Validate JWT token
-        decoded_token, error_response = validate_request_auth(event)
+        # Get authenticated user from API Gateway context
+        claims, error_response = get_authenticated_user(event)
         if error_response:
             return error_response
         
         # Extract user ID from JWT token
-        user_id = decoded_token.get('sub')
+        user_id = claims.get('sub')
         if not user_id:
             return create_error_response(
                 400,
@@ -106,7 +111,7 @@ def handle_user_creation(event):
             )
         
         # Extract optional email from JWT token
-        email = decoded_token.get('email')
+        email = claims.get('email')
         
         # Create new user
         user = User(

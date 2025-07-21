@@ -11,9 +11,8 @@ class NicknameIndex(GlobalSecondaryIndex):
     """
     class Meta:
         index_name = 'nickname-index'
-        read_capacity_units = 1
-        write_capacity_units = 1
         projection = AllProjection()
+        # No capacity units needed for on-demand billing mode
     
     nickname = UnicodeAttribute(hash_key=True)
 

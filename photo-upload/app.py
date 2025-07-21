@@ -4,6 +4,7 @@ import os
 import sys
 import boto3
 from PIL import Image
+from PIL.ExifTags import TAGS
 import io
 from datetime import datetime
 import uuid
@@ -13,7 +14,12 @@ from botocore.exceptions import ClientError
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'shared'))
 from models.user import User
 from config import config
-from auth import validate_request_auth, handle_options_request, create_response, create_error_response
+# Use simplified auth when API Gateway handles JWT validation
+try:
+    from auth_simplified import get_authenticated_user, handle_options_request, create_response, create_error_response
+except ImportError:
+    # Fallback to full auth module if simplified not available
+    from auth import validate_request_auth as get_authenticated_user, handle_options_request, create_response, create_error_response
 
 
 s3_client = boto3.client('s3')
@@ -27,6 +33,8 @@ MAX_IMAGE_SIZE = config.get_int_parameter('max-image-size', 5242880)
 MAX_WIDTH = config.get_int_parameter('image-max-width', 1920)
 MAX_HEIGHT = config.get_int_parameter('image-max-height', 1080)
 JPEG_QUALITY = config.get_int_parameter('image-jpeg-quality', 85)
+WEBP_QUALITY = config.get_int_parameter('image-webp-quality', 85)
+ENABLE_WEBP = config.get_bool_parameter('enable-webp-support', True)
 
 # Security and application settings from local .env files
 ALLOWED_EXTENSIONS = set(config.get_list_parameter('allowed-image-extensions', default=['.jpg', '.jpeg', '.png', '.gif']))
@@ -55,8 +63,8 @@ def lambda_handler(event, context):
 def handle_photo_upload(event):
     """Handle POST request for photo upload"""
     try:
-        # Validate JWT token
-        decoded_token, error_response = validate_request_auth(event)
+        # Get authenticated user from API Gateway context
+        claims, error_response = get_authenticated_user(event)
         if error_response:
             return error_response
         
@@ -64,7 +72,7 @@ def handle_photo_upload(event):
         user_id = event['pathParameters']['userId']
         
         # Verify that the token belongs to the user trying to upload
-        token_user_id = decoded_token.get('sub')
+        token_user_id = claims.get('sub')
         if token_user_id != user_id:
             return create_error_response(
                 403, 
@@ -119,10 +127,19 @@ def handle_photo_upload(event):
         try:
             image = Image.open(io.BytesIO(body))
             
+            # Strip EXIF data for privacy and size reduction
+            # Remove EXIF data by copying image data
+            if hasattr(image, '_getexif') and image._getexif():
+                # Create a new image without EXIF data
+                data = list(image.getdata())
+                image_without_exif = Image.new(image.mode, image.size)
+                image_without_exif.putdata(data)
+                image = image_without_exif
+            
             # Convert RGBA to RGB if necessary
             if image.mode in ('RGBA', 'LA'):
                 background = Image.new('RGB', image.size, (255, 255, 255))
-                background.paste(image, mask=image.split()[-1])
+                background.paste(image, mask=image.split()[-1] if image.mode == 'RGBA' else None)
                 image = background
             elif image.mode not in ('RGB', 'L'):
                 image = image.convert('RGB')
@@ -130,9 +147,21 @@ def handle_photo_upload(event):
             # Resize if necessary
             image.thumbnail((MAX_WIDTH, MAX_HEIGHT), Image.Resampling.LANCZOS)
             
+            # Determine format based on Accept header (check if client supports WebP)
+            accept_header = event.get('headers', {}).get('Accept', '')
+            use_webp = ENABLE_WEBP and 'image/webp' in accept_header
+            
             # Save optimized image to bytes
             output_buffer = io.BytesIO()
-            image.save(output_buffer, format='JPEG', quality=JPEG_QUALITY, optimize=True)
+            if use_webp:
+                image.save(output_buffer, format='WEBP', quality=WEBP_QUALITY, optimize=True, method=6)
+                image_format = 'webp'
+                content_type = 'image/webp'
+            else:
+                # Use progressive JPEG for better perceived loading performance
+                image.save(output_buffer, format='JPEG', quality=JPEG_QUALITY, optimize=True, progressive=True)
+                image_format = 'jpeg'
+                content_type = 'image/jpeg'
             optimized_image = output_buffer.getvalue()
             
         except Exception as e:
@@ -146,7 +175,8 @@ def handle_photo_upload(event):
         # Generate unique filename
         timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
         unique_id = str(uuid.uuid4())[:8]
-        filename = f"{user_id}/profile_{timestamp}_{unique_id}.jpg"
+        extension = 'webp' if use_webp else 'jpg'
+        filename = f"{user_id}/profile_{timestamp}_{unique_id}.{extension}"
         
         # Upload to S3
         try:
@@ -154,12 +184,13 @@ def handle_photo_upload(event):
                 Bucket=PHOTO_BUCKET_NAME,
                 Key=filename,
                 Body=optimized_image,
-                ContentType='image/jpeg',
+                ContentType=content_type,
                 Metadata={
                     'user_id': user_id,
                     'upload_timestamp': datetime.utcnow().isoformat(),
                     'original_size': str(len(body)),
-                    'optimized_size': str(len(optimized_image))
+                    'optimized_size': str(len(optimized_image)),
+                    'format': image_format
                 }
             )
             
@@ -218,6 +249,7 @@ def handle_photo_upload(event):
                 'photo_url': photo_url,
                 's3_key': filename,
                 'size_reduction': f"{(1 - len(optimized_image) / len(body)) * 100:.1f}%",
+                'image_format': image_format,
                 'user': user.to_dict()
             }),
             event,
