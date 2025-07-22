@@ -59,10 +59,10 @@ Resources:
     Properties:
       Name: !Sub "${AWS::StackName}-api"
       StageName: Prod
-      DefinitionUri: openapi.yaml
-      Variables:
-        # Pass environment variables to OpenAPI template
-        ServerUrl: !Sub "https://${AWS::StackName}-api.execute-api.${AWS::Region}.amazonaws.com/Prod"
+      Cors:
+        AllowOrigin: "'*'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowMethods: "'GET,POST,DELETE,OPTIONS'"
       Auth:
         DefaultAuthorizer: CognitoJWTAuthorizer
         Authorizers:
