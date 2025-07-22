@@ -281,7 +281,7 @@ Resources:
             Effect: Allow
             Principal: "*"
             Action: "s3:GetObject"
-            Resource: !Sub "${PhotoBucket}/*"
+            Resource: !Sub "arn:aws:s3:::${PhotoBucket}/*"
 
 Outputs:
   # API Gateway endpoint
