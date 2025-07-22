@@ -19,6 +19,23 @@ servers:
   - url: https://{api-id}.execute-api.us-east-1.amazonaws.com/Prod
     description: Production API
 
+x-amazon-apigateway-cors:
+  allowOrigins:
+    - "*"
+  allowHeaders:
+    - "Content-Type"
+    - "X-Amz-Date"
+    - "Authorization"
+    - "X-Api-Key"
+    - "X-Amz-Security-Token"
+  allowMethods:
+    - "GET"
+    - "POST" 
+    - "DELETE"
+    - "OPTIONS"
+  maxAge: 600
+  allowCredentials: false
+
 security:
   - CognitoJWTAuth: []
 
