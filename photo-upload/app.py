@@ -194,12 +194,8 @@ def handle_photo_upload(event):
                 }
             )
             
-            # Generate presigned URL for the uploaded image (valid for 7 days)
-            photo_url = s3_client.generate_presigned_url(
-                'get_object',
-                Params={'Bucket': PHOTO_BUCKET_NAME, 'Key': filename},
-                ExpiresIn=604800  # 7 days
-            )
+            # Generate public URL for the uploaded image
+            photo_url = f"https://{PHOTO_BUCKET_NAME}.s3.amazonaws.com/{filename}"
             
         except ClientError as e:
             return create_error_response(

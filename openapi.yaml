@@ -16,8 +16,12 @@ info:
     name: MIT
 
 servers:
-  - url: https://{api-id}.execute-api.us-east-1.amazonaws.com/Prod
+  - url: https://api.anecdotario.com
     description: Production API
+  - url: https://stage.api.anecdotario.com
+    description: Staging API
+  - url: https://dev.api.anecdotario.com
+    description: Development API
 
 
 security:
@@ -32,7 +36,7 @@ paths:
         - Optimized (max 1920x1080, JPEG quality 85)
         - EXIF data stripped for privacy
         - Stored in S3 with encryption
-        - Returns a presigned URL valid for 7 days
+        - Returns a public URL for immediate access
       parameters:
         - name: userId
           in: path
@@ -70,11 +74,11 @@ paths:
               schema:
                 type: object
                 properties:
-                  presigned_url:
+                  photo_url:
                     type: string
                     format: uri
-                    description: Presigned URL to access the uploaded photo (valid for 7 days)
-                    example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/photo.jpg?X-Amz-Algorithm=..."
+                    description: Public URL to access the uploaded photo
+                    example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/photo.jpg"
                   message:
                     type: string
                     example: "Photo uploaded successfully"
@@ -295,7 +299,7 @@ components:
           type: string
           format: uri
           nullable: true
-          description: URL to user's profile image (presigned S3 URL)
+          description: Public URL to user's profile image
           example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/photo.jpg"
         created_at:
           type: string
