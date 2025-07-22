@@ -53,12 +53,16 @@ Globals:
         PARAMETER_STORE_PREFIX: !Ref ParameterStorePrefix
 
 Resources:
-  # API Gateway with JWT Authorizer
+  # API Gateway with JWT Authorizer and OpenAPI Documentation
   UserServiceApi:
     Type: AWS::Serverless::Api
     Properties:
       Name: !Sub "${AWS::StackName}-api"
       StageName: Prod
+      DefinitionUri: openapi.yaml
+      Variables:
+        # Pass environment variables to OpenAPI template
+        ServerUrl: !Sub "https://${AWS::StackName}-api.execute-api.${AWS::Region}.amazonaws.com/Prod"
       Cors:
         AllowOrigin: "'*'"
         AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"

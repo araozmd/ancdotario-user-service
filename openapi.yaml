@@ -1,0 +1,335 @@
+openapi: 3.0.1
+info:
+  title: Anecdotario User Service API
+  version: 1.0.0
+  description: |
+    User account management and photo upload service for the Anecdotario platform.
+    
+    This service provides:
+    - Photo upload with image optimization
+    - User lookup by nickname
+    - User account creation and management
+    - JWT-based authentication via AWS Cognito
+  contact:
+    name: Anecdotario Development Team
+  license:
+    name: MIT
+
+servers:
+  - url: https://{api-id}.execute-api.us-east-1.amazonaws.com/Prod
+    description: Production API
+
+security:
+  - CognitoJWTAuth: []
+
+paths:
+  /users/{userId}/photo:
+    post:
+      summary: Upload user photo
+      description: |
+        Upload and optimize a user's profile photo. The image will be:
+        - Optimized (max 1920x1080, JPEG quality 85)
+        - EXIF data stripped for privacy
+        - Stored in S3 with encryption
+        - Returns a presigned URL valid for 7 days
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: Cognito user ID (must match authenticated user)
+          schema:
+            type: string
+            pattern: '^[a-zA-Z0-9-_]+$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - image
+              properties:
+                image:
+                  type: string
+                  format: base64
+                  description: Base64 encoded image data with data URL prefix (e.g., "data:image/jpeg;base64,...")
+                  example: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD..."
+                nickname:
+                  type: string
+                  minLength: 3
+                  maxLength: 20
+                  pattern: '^[a-zA-Z0-9_-]+$'
+                  description: User nickname (required for new users)
+                  example: "johndoe123"
+      responses:
+        200:
+          description: Photo uploaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  presigned_url:
+                    type: string
+                    format: uri
+                    description: Presigned URL to access the uploaded photo (valid for 7 days)
+                    example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/photo.jpg?X-Amz-Algorithm=..."
+                  message:
+                    type: string
+                    example: "Photo uploaded successfully"
+        400:
+          description: Bad request - invalid image data or nickname
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        401:
+          description: Unauthorized - invalid or missing JWT token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        403:
+          description: Forbidden - user can only upload their own photo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        413:
+          description: Payload too large - image exceeds 5MB limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/by-nickname/{nickname}:
+    get:
+      summary: Get user by nickname
+      description: Retrieve user information by their unique nickname
+      parameters:
+        - name: nickname
+          in: path
+          required: true
+          description: User's unique nickname
+          schema:
+            type: string
+            minLength: 3
+            maxLength: 20
+            pattern: '^[a-zA-Z0-9_-]+$'
+            example: "johndoe123"
+      responses:
+        200:
+          description: User found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        401:
+          description: Unauthorized - invalid or missing JWT token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users:
+    post:
+      summary: Create new user
+      description: Create a new user account with optional nickname
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nickname:
+                  type: string
+                  minLength: 3
+                  maxLength: 20
+                  pattern: '^[a-zA-Z0-9_-]+$'
+                  description: Optional unique nickname for the user
+                  example: "johndoe123"
+      responses:
+        201:
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        400:
+          description: Bad request - invalid nickname or nickname already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        401:
+          description: Unauthorized - invalid or missing JWT token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      summary: Delete current user account
+      description: Delete the authenticated user's account and all associated data
+      responses:
+        200:
+          description: User account deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "User account deleted successfully"
+        401:
+          description: Unauthorized - invalid or missing JWT token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/{userId}:
+    delete:
+      summary: Delete user by ID (admin only)
+      description: Delete a specific user account by ID (requires admin privileges)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: Cognito user ID to delete
+          schema:
+            type: string
+            pattern: '^[a-zA-Z0-9-_]+$'
+      responses:
+        200:
+          description: User deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "User deleted successfully"
+        401:
+          description: Unauthorized - invalid or missing JWT token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        403:
+          description: Forbidden - insufficient privileges
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  securitySchemes:
+    CognitoJWTAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        AWS Cognito JWT token. Include the token in the Authorization header:
+        `Authorization: Bearer <your-jwt-token>`
+
+  schemas:
+    User:
+      type: object
+      properties:
+        cognito_id:
+          type: string
+          description: Cognito user ID (primary key)
+          example: "us-east-1:12345678-1234-1234-1234-123456789012"
+        nickname:
+          type: string
+          description: Unique user nickname
+          example: "johndoe123"
+        image_url:
+          type: string
+          format: uri
+          nullable: true
+          description: URL to user's profile image (presigned S3 URL)
+          example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/photo.jpg"
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when user was created
+          example: "2025-01-15T10:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp when user was last updated
+          example: "2025-01-15T15:45:30Z"
+      required:
+        - cognito_id
+        - nickname
+        - created_at
+        - updated_at
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+          example: "Invalid image format"
+        details:
+          type: string
+          description: Additional error details
+          example: "Supported formats: JPEG, PNG, WebP"
+      required:
+        - error
+
+tags:
+  - name: Photos
+    description: Photo upload and management operations
+  - name: Users
+    description: User account operations
+  - name: Lookup
+    description: User lookup and search operations

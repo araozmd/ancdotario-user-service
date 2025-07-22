@@ -75,3 +75,4 @@ artifacts:
     - packaged-template.yaml
     - samconfig-*.toml
     - pipeline/deploy-*-buildspec.yml
+    - openapi.yaml
