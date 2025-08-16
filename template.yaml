@@ -60,9 +60,14 @@ Resources:
       Name: !Sub "${AWS::StackName}-api"
       StageName: Prod
       Cors:
-        AllowOrigin: "'*'"
+        AllowOrigin: !If 
+          - IsDevEnvironment
+          - "'http://localhost:8080'"
+          - "'*'"
         AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
         AllowMethods: "'GET,POST,DELETE,OPTIONS'"
+        AllowCredentials: false
+        MaxAge: "'600'"
       Auth:
         DefaultAuthorizer: CognitoJWTAuthorizer
         Authorizers:
