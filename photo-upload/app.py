@@ -192,9 +192,11 @@ def lambda_handler(event, context):
         
         # Upload all versions to S3 and collect URLs
         image_urls = {}
+        s3_keys = {}  # Store S3 keys for database
         try:
             for version_name, image_data in image_versions.items():
                 filename = f"users/{user_id}/{version_name}_{timestamp}_{unique_id}.jpg"
+                s3_keys[version_name] = filename
                 
                 s3_client.put_object(
                     Bucket=PHOTO_BUCKET_NAME,
@@ -211,8 +213,18 @@ def lambda_handler(event, context):
                     }
                 )
                 
-                # Generate public URL for this version
-                image_urls[f"{version_name}_url"] = f"https://{PHOTO_BUCKET_NAME}.s3.amazonaws.com/{filename}"
+                # Generate URLs based on version type
+                if version_name == 'thumbnail':
+                    # Thumbnail is publicly accessible
+                    image_urls[f"{version_name}_url"] = f"https://{PHOTO_BUCKET_NAME}.s3.amazonaws.com/{filename}"
+                else:
+                    # Standard and high_res require presigned URLs (7 days expiry)
+                    presigned_url = s3_client.generate_presigned_url(
+                        'get_object',
+                        Params={'Bucket': PHOTO_BUCKET_NAME, 'Key': filename},
+                        ExpiresIn=604800  # 7 days in seconds
+                    )
+                    image_urls[f"{version_name}_url"] = presigned_url
             
         except ClientError as e:
             return create_error_response(
@@ -222,15 +234,15 @@ def lambda_handler(event, context):
                 {'details': str(e)}
             )
         
-        # Update or create user record with image URLs
+        # Update or create user record with image URLs and S3 keys
         try:
             # Try to get existing user
             user = User.get(user_id)
-            # Update all image URLs
+            # Update thumbnail URL (public) and S3 keys (for presigned URLs)
             user.thumbnail_url = image_urls.get('thumbnail_url')
-            user.standard_url = image_urls.get('standard_url') 
-            user.high_res_url = image_urls.get('high_res_url')
-            user.image_url = image_urls.get('standard_url')  # Backward compatibility
+            user.standard_s3_key = s3_keys.get('standard')
+            user.high_res_s3_key = s3_keys.get('high_res')
+            user.image_url = image_urls.get('thumbnail_url')  # Backward compatibility - use public thumbnail
             user.save()
         except User.DoesNotExist:
             # User doesn't exist, check if nickname was provided
@@ -250,14 +262,14 @@ def lambda_handler(event, context):
                     event
                 )
             
-            # Create new user with all image URLs
+            # Create new user with thumbnail URL and S3 keys
             user = User(
                 cognito_id=user_id,
                 nickname=nickname,
                 thumbnail_url=image_urls.get('thumbnail_url'),
-                standard_url=image_urls.get('standard_url'),
-                high_res_url=image_urls.get('high_res_url'),
-                image_url=image_urls.get('standard_url')  # Backward compatibility
+                standard_s3_key=s3_keys.get('standard'),
+                high_res_s3_key=s3_keys.get('high_res'),
+                image_url=image_urls.get('thumbnail_url')  # Backward compatibility - use public thumbnail
             )
             user.save()
         
@@ -266,19 +278,20 @@ def lambda_handler(event, context):
         size_reduction = f"{(1 - total_optimized_size / len(body)) * 100:.1f}%"
         
         # Return success response with all image versions
+        # Include presigned URLs since user is authenticated
         return create_response(
             200,
             json.dumps({
                 'message': 'Photo uploaded successfully',
                 'images': {
                     'thumbnail': image_urls.get('thumbnail_url'),
-                    'standard': image_urls.get('standard_url'),
-                    'high_res': image_urls.get('high_res_url')
+                    'standard': image_urls.get('standard_url'),  # Presigned URL
+                    'high_res': image_urls.get('high_res_url')   # Presigned URL
                 },
-                'photo_url': image_urls.get('standard_url'),  # Backward compatibility
+                'photo_url': image_urls.get('thumbnail_url'),  # Backward compatibility - public thumbnail
                 'versions_created': len(image_versions),
                 'size_reduction': size_reduction,
-                'user': user.to_dict()
+                'user': user.to_dict(include_presigned_urls=True, s3_client=s3_client)
             }),
             event,
             ['POST']

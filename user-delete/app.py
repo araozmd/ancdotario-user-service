@@ -99,7 +99,9 @@ def handle_user_deletion(event):
         
         # Delete user photos from S3 (if bucket is configured)
         photos_deleted = []
-        if BUCKET_NAME and user.image_url:
+        # Check if user has any images (thumbnail, standard, or high-res)
+        has_images = user.thumbnail_url or user.standard_s3_key or user.high_res_s3_key or user.image_url
+        if BUCKET_NAME and has_images:
             try:
                 photos_deleted = delete_user_photos(target_user_id)
             except Exception as e:
@@ -141,10 +143,10 @@ def delete_user_photos(user_id):
     deleted_photos = []
     
     try:
-        # List all objects with the user's prefix
+        # List all objects with the user's prefix (photos are stored as users/{user_id}/*)
         response = s3_client.list_objects_v2(
             Bucket=BUCKET_NAME,
-            Prefix=f"{user_id}/"
+            Prefix=f"users/{user_id}/"
         )
         
         if 'Contents' not in response:
@@ -167,7 +169,7 @@ def delete_user_photos(user_id):
             continuation_token = response.get('NextContinuationToken')
             response = s3_client.list_objects_v2(
                 Bucket=BUCKET_NAME,
-                Prefix=f"{user_id}/",
+                Prefix=f"users/{user_id}/",
                 ContinuationToken=continuation_token
             )
             

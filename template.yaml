@@ -69,6 +69,7 @@ Resources:
         MaxAge: "'600'"
       Auth:
         DefaultAuthorizer: CognitoJWTAuthorizer
+        AddDefaultAuthorizerToCorsPreflight: false  # Don't require auth for OPTIONS
         Authorizers:
           CognitoJWTAuthorizer:
             Type: COGNITO_USER_POOLS
@@ -281,11 +282,11 @@ Resources:
       Bucket: !Ref PhotoBucket
       PolicyDocument:
         Statement:
-          - Sid: PublicReadGetObject
+          - Sid: PublicReadThumbnailsOnly
             Effect: Allow
             Principal: "*"
             Action: "s3:GetObject"
-            Resource: !Sub "arn:aws:s3:::${PhotoBucket}/*"
+            Resource: !Sub "arn:aws:s3:::${PhotoBucket}/users/*/thumbnail_*"
 
 Outputs:
   # API Gateway endpoint

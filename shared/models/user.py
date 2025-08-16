@@ -33,11 +33,11 @@ class User(Model):
     # Searchable nickname (unique)
     nickname = UnicodeAttribute()
     
-    # S3 URLs for profile images (multiple versions)
+    # S3 URLs and keys for profile images (multiple versions)
     image_url = UnicodeAttribute(null=True)              # Legacy field for backward compatibility
-    thumbnail_url = UnicodeAttribute(null=True)          # Small thumbnail (150x150)
-    standard_url = UnicodeAttribute(null=True)           # Standard size (320x320)
-    high_res_url = UnicodeAttribute(null=True)           # High resolution (800x800)
+    thumbnail_url = UnicodeAttribute(null=True)          # Small thumbnail (150x150) - public URL
+    standard_s3_key = UnicodeAttribute(null=True)        # Standard size (320x320) - S3 key for presigned URL
+    high_res_s3_key = UnicodeAttribute(null=True)        # High resolution (800x800) - S3 key for presigned URL
     
     # Timestamps
     created_at = UTCDateTimeAttribute(default=datetime.utcnow)
@@ -60,16 +60,46 @@ class User(Model):
         except Exception:
             return None
     
-    def to_dict(self):
-        """Convert model to dictionary for API responses"""
+    def to_dict(self, include_presigned_urls=False, s3_client=None):
+        """
+        Convert model to dictionary for API responses
+        
+        Args:
+            include_presigned_urls: If True, generate presigned URLs for protected images
+            s3_client: boto3 S3 client instance (required if include_presigned_urls is True)
+        """
         # Build images object with available versions
         images = {}
         if self.thumbnail_url:
             images['thumbnail'] = self.thumbnail_url
-        if self.standard_url:
-            images['standard'] = self.standard_url
-        if self.high_res_url:
-            images['high_res'] = self.high_res_url
+            
+        # Generate presigned URLs for standard and high-res if requested
+        if include_presigned_urls and s3_client:
+            if self.standard_s3_key:
+                try:
+                    images['standard'] = s3_client.generate_presigned_url(
+                        'get_object',
+                        Params={
+                            'Bucket': os.environ.get('PHOTO_BUCKET_NAME'),
+                            'Key': self.standard_s3_key
+                        },
+                        ExpiresIn=604800  # 7 days
+                    )
+                except Exception:
+                    pass  # Silently fail if can't generate URL
+                    
+            if self.high_res_s3_key:
+                try:
+                    images['high_res'] = s3_client.generate_presigned_url(
+                        'get_object',
+                        Params={
+                            'Bucket': os.environ.get('PHOTO_BUCKET_NAME'),
+                            'Key': self.high_res_s3_key
+                        },
+                        ExpiresIn=604800  # 7 days
+                    )
+                except Exception:
+                    pass  # Silently fail if can't generate URL
         
         # Fallback to legacy image_url if no new versions exist
         if not images and self.image_url:

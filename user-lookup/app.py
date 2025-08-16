@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import boto3
 
 # Add shared directory to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'shared'))
@@ -12,6 +13,9 @@ try:
 except ImportError:
     # Fallback to full auth module if simplified not available
     from auth import create_response, create_error_response
+
+# Initialize S3 client for presigned URL generation
+s3_client = boto3.client('s3')
 
 
 def lambda_handler(event, context):
@@ -48,11 +52,17 @@ def lambda_handler(event, context):
                 {'nickname': nickname}
             )
         
-        # Return user information
+        # Check if user is authenticated (JWT token is already validated by API Gateway)
+        is_authenticated = event.get('requestContext', {}).get('authorizer', {}).get('claims') is not None
+        
+        # Return user information with presigned URLs if authenticated
         return create_response(
             200,
             json.dumps({
-                'user': user.to_dict(),
+                'user': user.to_dict(
+                    include_presigned_urls=is_authenticated,
+                    s3_client=s3_client if is_authenticated else None
+                ),
                 'retrieved_at': event.get('requestContext', {}).get('requestTime')
             }),
             event,
