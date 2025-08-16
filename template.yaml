@@ -61,7 +61,7 @@ Resources:
       Cors:
         AllowOrigin: !If 
           - IsDevEnvironment
-          - "'http://localhost:8080,https://dev.anecdotario.com,https://anecdotario.com'"
+          - "'*'"
           - !Sub "'https://${Environment}.anecdotario.com,https://anecdotario.com'"
         AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
         AllowMethods: "'GET,POST,DELETE,OPTIONS'"

@@ -33,8 +33,11 @@ class User(Model):
     # Searchable nickname (unique)
     nickname = UnicodeAttribute()
     
-    # S3 URL for profile image
-    image_url = UnicodeAttribute(null=True)
+    # S3 URLs for profile images (multiple versions)
+    image_url = UnicodeAttribute(null=True)              # Legacy field for backward compatibility
+    thumbnail_url = UnicodeAttribute(null=True)          # Small thumbnail (150x150)
+    standard_url = UnicodeAttribute(null=True)           # Standard size (320x320)
+    high_res_url = UnicodeAttribute(null=True)           # High resolution (800x800)
     
     # Timestamps
     created_at = UTCDateTimeAttribute(default=datetime.utcnow)
@@ -59,10 +62,24 @@ class User(Model):
     
     def to_dict(self):
         """Convert model to dictionary for API responses"""
+        # Build images object with available versions
+        images = {}
+        if self.thumbnail_url:
+            images['thumbnail'] = self.thumbnail_url
+        if self.standard_url:
+            images['standard'] = self.standard_url
+        if self.high_res_url:
+            images['high_res'] = self.high_res_url
+        
+        # Fallback to legacy image_url if no new versions exist
+        if not images and self.image_url:
+            images['standard'] = self.image_url
+        
         return {
             'cognito_id': self.cognito_id,
             'nickname': self.nickname,
-            'image_url': self.image_url,
+            'images': images if images else None,
+            'image_url': self.image_url,  # Keep for backward compatibility
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }

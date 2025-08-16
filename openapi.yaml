@@ -74,14 +74,43 @@ paths:
               schema:
                 type: object
                 properties:
-                  photo_url:
-                    type: string
-                    format: uri
-                    description: Public URL to access the uploaded photo
-                    example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/photo.jpg"
                   message:
                     type: string
                     example: "Photo uploaded successfully"
+                  images:
+                    type: object
+                    description: Multiple image versions (Instagram-style)
+                    properties:
+                      thumbnail:
+                        type: string
+                        format: uri
+                        description: Small thumbnail version (150x150px)
+                        example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/thumbnail_20250116_123456_a1b2c3d4.jpg"
+                      standard:
+                        type: string
+                        format: uri
+                        description: Standard version for profile display (320x320px)
+                        example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/standard_20250116_123456_a1b2c3d4.jpg"
+                      high_res:
+                        type: string
+                        format: uri
+                        description: High resolution version for full view (800x800px)
+                        example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/high_res_20250116_123456_a1b2c3d4.jpg"
+                  photo_url:
+                    type: string
+                    format: uri
+                    description: Legacy field - same as images.standard for backward compatibility
+                    example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/standard_20250116_123456_a1b2c3d4.jpg"
+                  versions_created:
+                    type: integer
+                    description: Number of image versions created
+                    example: 3
+                  size_reduction:
+                    type: string
+                    description: Percentage reduction in total file size
+                    example: "65.2%"
+                  user:
+                    $ref: '#/components/schemas/User'
         400:
           description: Bad request - invalid image data or nickname
           content:
@@ -295,12 +324,32 @@ components:
           type: string
           description: Unique user nickname
           example: "johndoe123"
+        images:
+          type: object
+          nullable: true
+          description: Multiple profile image versions
+          properties:
+            thumbnail:
+              type: string
+              format: uri
+              description: Small thumbnail (150x150px)
+              example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/thumbnail_20250116_123456_a1b2c3d4.jpg"
+            standard:
+              type: string
+              format: uri
+              description: Standard size (320x320px)
+              example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/standard_20250116_123456_a1b2c3d4.jpg"
+            high_res:
+              type: string
+              format: uri
+              description: High resolution (800x800px)
+              example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/high_res_20250116_123456_a1b2c3d4.jpg"
         image_url:
           type: string
           format: uri
           nullable: true
-          description: Public URL to user's profile image
-          example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/photo.jpg"
+          description: Legacy field - Public URL to user's profile image (backward compatibility)
+          example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/standard_20250116_123456_a1b2c3d4.jpg"
         created_at:
           type: string
           format: date-time

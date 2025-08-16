@@ -271,6 +271,33 @@ Avoid SAM managed stack creation issues by using predefined, environment-specifi
 ### 5. **Monitor CloudFormation Events**
 Set up monitoring for CloudFormation stack failures to catch permission issues early.
 
+## Key Learnings
+
+1. **Permission Accumulation**: Each deployment failure revealed additional required permissions that weren't obvious from documentation
+2. **Iteration Pattern**: The most effective approach was: stop pipeline → delete stacks → add permissions → commit → recreate pipeline
+3. **Documentation Value**: Capturing these fixes prevents future teams from repeating the same discovery process
+4. **Comprehensive Testing**: Full end-to-end pipeline tests reveal permission gaps that local testing misses
+
+### OpenAPI Integration Lessons (Final Resolution)
+
+5. **SAM Template vs OpenAPI File Compatibility**:
+   - AWS SAM's `DefinitionUri` approach for external OpenAPI files has significant limitations
+   - **CORS**: Compatible with both SAM template (`Cors:` property) and OpenAPI file (`x-amazon-apigateway-cors`)
+   - **Authentication**: **ONLY works reliably with SAM template inline definition** (`Auth:` property)
+   - Critical Error: `"Auth works only with inline Swagger specified in 'DefinitionBody' property"`
+
+6. **API Documentation Strategy - Final Approach**:
+   - Created comprehensive OpenAPI 3.0.1 specification (`openapi.yaml`) for complete API documentation
+   - **Reverted to SAM template Auth/CORS configuration** for functional deployment reliability
+   - OpenAPI file maintained as standalone reference documentation (not used in deployment)
+   - **Successful deployment achieved** with traditional SAM template approach
+
+7. **Deployment vs Documentation Trade-offs**:
+   - **Functional API deployment takes precedence** over auto-generated documentation integration
+   - SAM template provides more reliable Auth + CORS configuration than DefinitionUri approach
+   - **Alternative recommendation**: Host API documentation separately (S3 static site, documentation platforms)
+   - **Final pipeline deployment: SUCCESSFUL** after reverting OpenAPI integration attempts
+
 ---
 
-**Key Takeaway**: AWS SAM pipeline deployments require extensive permissions across S3, CloudFormation, CloudWatch Logs, and service-specific resources. The most reliable approach is to start with comprehensive permissions and systematically test deployment from clean environments.
+**Key Takeaway**: AWS SAM pipeline deployments require extensive permissions across S3, CloudFormation, CloudWatch Logs, and service-specific resources. The most reliable approach is to start with comprehensive permissions and systematically test deployment from clean environments. For API documentation, maintain OpenAPI specifications as standalone files rather than attempting complex SAM integration when Auth/CORS reliability is critical.
