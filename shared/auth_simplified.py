@@ -48,20 +48,6 @@ def get_authenticated_user(event: dict) -> Tuple[Optional[Dict], Optional[Dict]]
         )
 
 
-def handle_options_request(event: dict) -> dict:
-    """
-    Handle preflight OPTIONS request for CORS.
-    API Gateway handles CORS automatically - this is a fallback that should rarely be called.
-    """
-    return {
-        'statusCode': 200,
-        'headers': {
-            'Content-Type': 'application/json'
-        },
-        'body': ''
-    }
-
-
 def create_response(status_code: int, body: str, event: dict, allowed_methods: list = None) -> dict:
     """Create a Lambda response - CORS is handled by API Gateway"""
     return {

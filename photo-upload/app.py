@@ -14,12 +14,12 @@ from botocore.exceptions import ClientError
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'shared'))
 from models.user import User
 from config import config
-# Use simplified auth when API Gateway handles JWT validation
+# Simple response functions - no auth validation needed since API Gateway handles it
 try:
-    from auth_simplified import get_authenticated_user, handle_options_request, create_response, create_error_response
+    from auth_simplified import create_response, create_error_response
 except ImportError:
     # Fallback to full auth module if simplified not available
-    from auth import validate_request_auth as get_authenticated_user, handle_options_request, create_response, create_error_response
+    from auth import create_response, create_error_response
 
 
 s3_client = boto3.client('s3')
@@ -38,41 +38,16 @@ ENABLE_WEBP = config.get_bool_parameter('enable-webp-support', True)
 
 # Security and application settings from local .env files
 ALLOWED_EXTENSIONS = set(config.get_list_parameter('allowed-image-extensions', default=['.jpg', '.jpeg', '.png', '.gif']))
-JWT_TOKEN_EXPIRY_TOLERANCE = config.get_int_parameter('jwt-token-expiry-tolerance', 300)
 
 
 def lambda_handler(event, context):
-    """Lambda handler for photo upload"""
-    
-    # Handle preflight OPTIONS request
-    if event['httpMethod'] == 'OPTIONS':
-        return handle_options_request(event)
-    
-    # Only handle POST requests for photo upload
-    if event['httpMethod'] == 'POST':
-        return handle_photo_upload(event)
-    
-    return create_error_response(
-        405, 
-        'Method not allowed. This endpoint only supports photo uploads.',
-        event,
-        ['POST']
-    )
-
-
-def handle_photo_upload(event):
-    """Handle POST request for photo upload"""
+    """Lambda handler for photo upload - handles POST /users/{userId}/photo"""
     try:
-        # Get authenticated user from API Gateway context
-        claims, error_response = get_authenticated_user(event)
-        if error_response:
-            return error_response
-        
-        # Extract user ID from path
+        # API Gateway already validated JWT token, extract user info
+        token_user_id = event['requestContext']['authorizer']['claims']['sub']
         user_id = event['pathParameters']['userId']
         
         # Verify that the token belongs to the user trying to upload
-        token_user_id = claims.get('sub')
         if token_user_id != user_id:
             return create_error_response(
                 403, 

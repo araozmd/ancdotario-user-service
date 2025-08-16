@@ -10,10 +10,10 @@ from models.user import User
 from config import config
 # Use simplified auth when API Gateway handles JWT validation
 try:
-    from auth_simplified import get_authenticated_user, handle_options_request, create_response, create_error_response
+    from auth_simplified import create_response, create_error_response
 except ImportError:
     # Fallback to full auth module if simplified not available
-    from auth import validate_request_auth as get_authenticated_user, handle_options_request, create_response, create_error_response
+    from auth import create_response, create_error_response
 
 # AWS Services
 s3_client = boto3.client('s3')
@@ -27,39 +27,14 @@ def lambda_handler(event, context):
     Lambda handler for user deletion
     Handles DELETE requests to remove user accounts and associated data
     """
-    
-    # Handle preflight OPTIONS request
-    if event['httpMethod'] == 'OPTIONS':
-        return handle_options_request(event)
-    
-    # Only handle DELETE requests for user deletion
-    if event['httpMethod'] == 'DELETE':
-        return handle_user_deletion(event)
-    
-    return create_error_response(
-        405,
-        'Method not allowed. This endpoint only supports user deletion.',
-        event,
-        ['DELETE']
-    )
+    return handle_user_deletion(event)
 
 
 def handle_user_deletion(event):
     """Handle DELETE request to remove a user account"""
     try:
-        # Get authenticated user from API Gateway context
-        claims, error_response = get_authenticated_user(event)
-        if error_response:
-            return error_response
-        
-        # Extract user ID from JWT token
-        user_id = claims.get('sub')
-        if not user_id:
-            return create_error_response(
-                400,
-                'Invalid token: missing user ID',
-                event
-            )
+        # API Gateway already validated JWT token, extract user ID
+        user_id = event['requestContext']['authorizer']['claims']['sub']
         
         # Get user ID from path parameters (if provided)
         path_params = event.get('pathParameters') or {}

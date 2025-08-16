@@ -9,50 +9,17 @@ from models.user import User
 from config import config
 # Use simplified auth when API Gateway handles JWT validation
 try:
-    from auth_simplified import get_authenticated_user, handle_options_request, create_response, create_error_response
+    from auth_simplified import create_response, create_error_response
 except ImportError:
     # Fallback to full auth module if simplified not available
-    from auth import validate_request_auth as get_authenticated_user, handle_options_request, create_response, create_error_response
+    from auth import create_response, create_error_response
 
 
 def lambda_handler(event, context):
-    """
-    Lambda handler for user creation
-    Lightweight function optimized for user creation operations
-    """
-    
-    # Handle preflight OPTIONS request
-    if event['httpMethod'] == 'OPTIONS':
-        return handle_options_request(event)
-    
-    # Only handle POST requests for user creation
-    if event['httpMethod'] == 'POST':
-        return handle_user_creation(event)
-    
-    return create_error_response(
-        405,
-        'Method not allowed. This endpoint only supports user creation.',
-        event,
-        ['POST']
-    )
-
-
-def handle_user_creation(event):
-    """Handle POST request to create a new user"""
+    """Lambda handler for user creation - handles POST /users"""
     try:
-        # Get authenticated user from API Gateway context
-        claims, error_response = get_authenticated_user(event)
-        if error_response:
-            return error_response
-        
-        # Extract user ID from JWT token
-        user_id = claims.get('sub')
-        if not user_id:
-            return create_error_response(
-                400,
-                'Invalid token: missing user ID',
-                event
-            )
+        # API Gateway already validated JWT token, extract user ID
+        user_id = event['requestContext']['authorizer']['claims']['sub']
         
         # Check if user already exists
         try:
@@ -110,8 +77,8 @@ def handle_user_creation(event):
                 {'nickname': nickname}
             )
         
-        # Extract optional email from JWT token
-        email = claims.get('email')
+        # Extract optional email from JWT token claims
+        email = event['requestContext']['authorizer']['claims'].get('email')
         
         # Create new user
         user = User(
