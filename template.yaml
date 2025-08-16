@@ -87,8 +87,8 @@ Resources:
   PhotoUploadFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: photo-upload/
-      Handler: app.lambda_handler
+      CodeUri: ./
+      Handler: photo-upload/app.lambda_handler
       Runtime: python3.12
       Architectures:
         - x86_64
@@ -121,8 +121,8 @@ Resources:
   UserLookupFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: user-lookup/
-      Handler: app.lambda_handler
+      CodeUri: ./
+      Handler: user-lookup/app.lambda_handler
       Runtime: python3.12
       Architectures:
         - x86_64
@@ -153,8 +153,8 @@ Resources:
   UserCreateFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: user-create/
-      Handler: app.lambda_handler
+      CodeUri: ./
+      Handler: user-create/app.lambda_handler
       Runtime: python3.12
       Architectures:
         - x86_64
@@ -185,8 +185,8 @@ Resources:
   UserDeleteFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: user-delete/
-      Handler: app.lambda_handler
+      CodeUri: ./
+      Handler: user-delete/app.lambda_handler
       Runtime: python3.12
       Architectures:
         - x86_64

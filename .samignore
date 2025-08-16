@@ -1,0 +1,45 @@
+# SAM ignore file - exclude unnecessary files from Lambda packages
+
+# Git files
+.git/
+.gitignore
+
+# Documentation
+*.md
+openapi.yaml
+
+# SAM files
+.aws-sam/
+samconfig*.toml
+template.yaml
+
+# Environment files
+.env*
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node modules (if any)
+node_modules/
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
