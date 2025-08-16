@@ -47,7 +47,6 @@ Globals:
         ENVIRONMENT: !Ref Environment
         USER_TABLE_NAME: !Ref UserTable
         KMS_KEY_ID: !Ref KMSKeyId
-        ALLOWED_ORIGINS: !Sub "https://${Environment}.anecdotario.com,https://anecdotario.com"
         PHOTO_BUCKET_NAME: !Ref PhotoBucket
         MAX_IMAGE_SIZE: !Ref MaxImageSize
         PARAMETER_STORE_PREFIX: !Ref ParameterStorePrefix
@@ -62,8 +61,8 @@ Resources:
       Cors:
         AllowOrigin: !If 
           - IsDevEnvironment
-          - "'http://localhost:8080'"
-          - "'*'"
+          - "'http://localhost:8080,https://dev.anecdotario.com,https://anecdotario.com'"
+          - !Sub "'https://${Environment}.anecdotario.com,https://anecdotario.com'"
         AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
         AllowMethods: "'GET,POST,DELETE,OPTIONS'"
         AllowCredentials: false

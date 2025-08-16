@@ -51,60 +51,31 @@ def get_authenticated_user(event: dict) -> Tuple[Optional[Dict], Optional[Dict]]
 def handle_options_request(event: dict) -> dict:
     """
     Handle preflight OPTIONS request for CORS.
-    API Gateway should handle this automatically with proper CORS configuration.
+    API Gateway handles CORS automatically - this is a fallback that should rarely be called.
     """
-    origin = get_allowed_origin(event)
-    
     return {
         'statusCode': 200,
         'headers': {
-            'Access-Control-Allow-Origin': origin,
-            'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-            'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS',
-            'Access-Control-Max-Age': '86400'
+            'Content-Type': 'application/json'
         },
         'body': ''
     }
 
 
-def get_allowed_origin(event: dict) -> str:
-    """Get the allowed origin for CORS based on request origin"""
-    request_origin = event.get('headers', {}).get('origin', '')
-    
-    # Get allowed origins from config
-    allowed_origins_str = config.get_parameter('allowed-origins', 
-                                               default='https://localhost:3000,http://localhost:3000')
-    allowed_origins = [origin.strip() for origin in allowed_origins_str.split(',')]
-    
-    # Return the request origin if it's in the allowed list, otherwise return the first allowed origin
-    if request_origin in allowed_origins:
-        return request_origin
-    
-    return allowed_origins[0] if allowed_origins else '*'
-
-
 def create_response(status_code: int, body: str, event: dict, allowed_methods: list = None) -> dict:
-    """Create a Lambda response with CORS headers"""
-    origin = get_allowed_origin(event)
-    
-    response = {
+    """Create a Lambda response - CORS is handled by API Gateway"""
+    return {
         'statusCode': status_code,
         'headers': {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': origin
+            'Content-Type': 'application/json'
         },
         'body': body
     }
-    
-    if allowed_methods:
-        response['headers']['Access-Control-Allow-Methods'] = ','.join(allowed_methods)
-    
-    return response
 
 
 def create_error_response(status_code: int, message: str, event: dict, 
                          details: dict = None, allowed_methods: list = None) -> dict:
-    """Create an error response with CORS headers"""
+    """Create an error response - CORS is handled by API Gateway"""
     error_body = {
         'error': message,
         'statusCode': status_code
