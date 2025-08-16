@@ -32,11 +32,17 @@ paths:
     post:
       summary: Upload user photo
       description: |
-        Upload and optimize a user's profile photo. The image will be:
-        - Optimized (max 1920x1080, JPEG quality 85)
-        - EXIF data stripped for privacy
-        - Stored in S3 with encryption
-        - Returns a public URL for immediate access
+        Upload and optimize a user's profile photo with Instagram-style multi-version processing.
+        
+        **Security Model:**
+        - Thumbnail (150x150): Publicly accessible for browsing/search
+        - Standard (320x320) & High-res (800x800): Protected with presigned URLs (7-day expiry)
+        
+        **Processing:**
+        - Creates 3 versions: thumbnail, standard, high-resolution
+        - Square cropping from center with progressive JPEG optimization
+        - EXIF data stripped for privacy and size reduction
+        - Stored in S3 with encryption and proper access controls
       parameters:
         - name: userId
           in: path
@@ -84,23 +90,23 @@ paths:
                       thumbnail:
                         type: string
                         format: uri
-                        description: Small thumbnail version (150x150px)
+                        description: Small thumbnail version (150x150px) - Publicly accessible
                         example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/thumbnail_20250116_123456_a1b2c3d4.jpg"
                       standard:
                         type: string
                         format: uri
-                        description: Standard version for profile display (320x320px)
-                        example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/standard_20250116_123456_a1b2c3d4.jpg"
+                        description: Standard version for profile display (320x320px) - Presigned URL with 7-day expiry
+                        example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/standard_20250116_123456_a1b2c3d4.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=..."
                       high_res:
                         type: string
                         format: uri
-                        description: High resolution version for full view (800x800px)
-                        example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/high_res_20250116_123456_a1b2c3d4.jpg"
+                        description: High resolution version for full view (800x800px) - Presigned URL with 7-day expiry
+                        example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/high_res_20250116_123456_a1b2c3d4.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=..."
                   photo_url:
                     type: string
                     format: uri
-                    description: Legacy field - same as images.standard for backward compatibility
-                    example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/standard_20250116_123456_a1b2c3d4.jpg"
+                    description: Legacy field - now returns thumbnail URL for backward compatibility (publicly accessible)
+                    example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/thumbnail_20250116_123456_a1b2c3d4.jpg"
                   versions_created:
                     type: integer
                     description: Number of image versions created
@@ -118,7 +124,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         401:
-          description: Unauthorized - invalid or missing JWT token
+          description: |
+            Unauthorized - Authentication failed. Common causes:
+            - Missing Authorization header
+            - Using Access Token instead of ID Token (check `token_use` claim should be "id")
+            - Expired token (check `exp` claim)
+            - Invalid token signature
+            - Wrong Cognito User Pool
           content:
             application/json:
               schema:
@@ -145,7 +157,12 @@ paths:
   /users/by-nickname/{nickname}:
     get:
       summary: Get user by nickname
-      description: Retrieve user information by their unique nickname
+      description: |
+        Retrieve user information by their unique nickname.
+        
+        **Access Control:**
+        - Authenticated users: Receive presigned URLs for standard and high-res images (7-day expiry)
+        - Anonymous users: Only receive publicly accessible thumbnail URLs
       parameters:
         - name: nickname
           in: path
@@ -309,8 +326,27 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: |
-        AWS Cognito JWT token. Include the token in the Authorization header:
-        `Authorization: Bearer <your-jwt-token>`
+        AWS Cognito JWT **ID Token** (not Access Token). Include the token in the Authorization header:
+        `Authorization: Bearer <your-id-token>`
+        
+        **Important**: You must use the **ID Token**, not the Access Token:
+        
+        **Correct (ID Token):**
+        ```javascript
+        const session = await Auth.currentSession();
+        const idToken = session.getIdToken().getJwtToken(); // ✅ Use this
+        ```
+        
+        **Incorrect (Access Token):**
+        ```javascript
+        const accessToken = session.getAccessToken().getJwtToken(); // ❌ Don't use this
+        ```
+        
+        **Token Characteristics:**
+        - **ID Token**: Contains user identity claims (`token_use: "id"`)
+        - **Access Token**: For AWS service access (`token_use: "access"`) 
+        - **Issuer**: `https://cognito-idp.us-east-1.amazonaws.com/us-east-1_W1OBKShP1`
+        - **Expiry**: Typically 1 hour (check `exp` claim)
 
   schemas:
     User:
@@ -327,29 +363,34 @@ components:
         images:
           type: object
           nullable: true
-          description: Multiple profile image versions
+          description: |
+            Multiple profile image versions with selective access control.
+            
+            **Security Model:**
+            - thumbnail: Always included (publicly accessible)
+            - standard & high_res: Only included for authenticated users (presigned URLs with 7-day expiry)
           properties:
             thumbnail:
               type: string
               format: uri
-              description: Small thumbnail (150x150px)
+              description: Small thumbnail (150x150px) - Always accessible
               example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/thumbnail_20250116_123456_a1b2c3d4.jpg"
             standard:
               type: string
               format: uri
-              description: Standard size (320x320px)
-              example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/standard_20250116_123456_a1b2c3d4.jpg"
+              description: Standard size (320x320px) - Authenticated users only (presigned URL)
+              example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/standard_20250116_123456_a1b2c3d4.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=..."
             high_res:
               type: string
               format: uri
-              description: High resolution (800x800px)
-              example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/high_res_20250116_123456_a1b2c3d4.jpg"
+              description: High resolution (800x800px) - Authenticated users only (presigned URL)
+              example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/high_res_20250116_123456_a1b2c3d4.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=..."
         image_url:
           type: string
           format: uri
           nullable: true
-          description: Legacy field - Public URL to user's profile image (backward compatibility)
-          example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/standard_20250116_123456_a1b2c3d4.jpg"
+          description: Legacy field - Now returns thumbnail URL for backward compatibility (publicly accessible)
+          example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/thumbnail_20250116_123456_a1b2c3d4.jpg"
         created_at:
           type: string
           format: date-time
