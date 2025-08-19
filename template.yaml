@@ -118,6 +118,40 @@ Resources:
             Auth:
               Authorizer: CognitoJWTAuthorizer
 
+  PhotoDeleteFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./
+      Handler: photo-delete/app.lambda_handler
+      Runtime: python3.12
+      Architectures:
+        - x86_64
+      MemorySize: 256  # Medium memory for S3 operations
+      Timeout: 30      # Longer timeout for multiple S3 deletions
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserTable
+        - S3CrudPolicy:
+            BucketName: !Ref PhotoBucket
+        - Statement:
+          - Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+              - ssm:GetParametersByPath
+            Resource: 
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ParameterStorePrefix}/*"
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/anecdotario/${Environment}/cognito/*"
+      Events:
+        PhotoDelete:
+          Type: Api
+          Properties:
+            RestApiId: !Ref UserServiceApi
+            Path: /users/{userId}/photo
+            Method: delete
+            Auth:
+              Authorizer: CognitoJWTAuthorizer
+
   UserLookupFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -302,6 +336,12 @@ Outputs:
     Value: !GetAtt PhotoUploadFunction.Arn
     Export:
       Name: !Sub "${AWS::StackName}-PhotoUploadFunctionArn"
+  
+  PhotoDeleteFunction:
+    Description: "Photo Delete Lambda Function ARN"
+    Value: !GetAtt PhotoDeleteFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-PhotoDeleteFunctionArn"
   
   UserLookupFunction:
     Description: "User Lookup Lambda Function ARN"

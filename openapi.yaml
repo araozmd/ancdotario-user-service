@@ -29,6 +29,86 @@ security:
 
 paths:
   /users/{userId}/photo:
+    delete:
+      summary: Delete user photo
+      description: |
+        Delete all versions of a user's profile photo from S3 and clear photo URLs from the database.
+        
+        **Security:**
+        - Users can only delete their own photos
+        - Deletes all versions: thumbnail, standard, and high-resolution
+        - Clears all photo-related fields from user record
+        
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: Cognito user ID (must match authenticated user)
+          schema:
+            type: string
+            pattern: '^[a-zA-Z0-9-_]+$'
+      responses:
+        200:
+          description: Photos deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Photos deleted successfully"
+                  user_id:
+                    type: string
+                    example: "b4787498-9011-7011-b492-d54a8d1501b7"
+                  deleted_files:
+                    type: array
+                    items:
+                      type: string
+                    example: ["users/b4787498-9011-7011-b492-d54a8d1501b7/thumbnail_20250116_123456_a1b2c3d4.jpg"]
+                  deletion_errors:
+                    type: array
+                    nullable: true
+                    items:
+                      type: object
+                      properties:
+                        key:
+                          type: string
+                        error:
+                          type: string
+                  deleted_at:
+                    type: string
+                    format: date-time
+        401:
+          description: |
+            Unauthorized - Authentication failed. Common causes:
+            - Missing Authorization header
+            - Using Access Token instead of ID Token
+            - Expired token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        403:
+          description: Forbidden - user can only delete their own photos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+        - CognitoJWTAuth: []
     post:
       summary: Upload user photo
       description: |
