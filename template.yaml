@@ -152,6 +152,40 @@ Resources:
             Auth:
               Authorizer: CognitoJWTAuthorizer
 
+  PhotoRefreshFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./
+      Handler: photo-refresh/app.lambda_handler
+      Runtime: python3.12
+      Architectures:
+        - x86_64
+      MemorySize: 128  # Minimal memory for URL generation
+      Timeout: 10      # Short timeout for presigned URL generation
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref UserTable
+        - S3ReadPolicy:
+            BucketName: !Ref PhotoBucket
+        - Statement:
+          - Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+              - ssm:GetParametersByPath
+            Resource: 
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ParameterStorePrefix}/*"
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/anecdotario/${Environment}/cognito/*"
+      Events:
+        PhotoRefresh:
+          Type: Api
+          Properties:
+            RestApiId: !Ref UserServiceApi
+            Path: /users/{userId}/photo/refresh
+            Method: get
+            Auth:
+              Authorizer: CognitoJWTAuthorizer
+
   UserLookupFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -342,6 +376,12 @@ Outputs:
     Value: !GetAtt PhotoDeleteFunction.Arn
     Export:
       Name: !Sub "${AWS::StackName}-PhotoDeleteFunctionArn"
+  
+  PhotoRefreshFunction:
+    Description: "Photo Refresh Lambda Function ARN"
+    Value: !GetAtt PhotoRefreshFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-PhotoRefreshFunctionArn"
   
   UserLookupFunction:
     Description: "User Lookup Lambda Function ARN"

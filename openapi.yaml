@@ -28,6 +28,125 @@ security:
   - CognitoJWTAuth: []
 
 paths:
+  /users/{userId}/photo/refresh:
+    get:
+      summary: Refresh photo URLs
+      description: |\
+        Generate fresh presigned URLs for existing photos without re-uploading them.
+        
+        **Use Case:**
+        - Presigned URLs expire after 7 days
+        - This endpoint refreshes them with a new 7-day expiry
+        - Much more efficient than re-uploading photos
+        
+        **Security:**
+        - Users can only refresh their own photo URLs
+        - Verifies photos exist in S3 before generating URLs
+        - Returns partial success if some files are missing
+        
+        **URL Types:**
+        - Thumbnail: Public URL (never expires, returned as-is)
+        - Standard & High-res: New presigned URLs with 7-day expiry
+        
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: Cognito user ID (must match authenticated user)
+          schema:
+            type: string
+            pattern: '^[a-zA-Z0-9-_]+$'
+      responses:
+        200:
+          description: Photo URLs refreshed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Photo URLs refreshed successfully"
+                  images:
+                    type: object
+                    description: Refreshed image URLs with new expiry times
+                    properties:
+                      thumbnail:
+                        type: string
+                        format: uri
+                        description: Public thumbnail URL (never expires)
+                        example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/thumbnail_20250119_123456_a1b2c3d4.jpg"
+                      standard:
+                        type: string
+                        format: uri
+                        description: Fresh presigned URL for standard image (7-day expiry)
+                        example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/standard_20250119_123456_a1b2c3d4.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=..."
+                      high_res:
+                        type: string
+                        format: uri
+                        description: Fresh presigned URL for high-res image (7-day expiry)
+                        example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/high_res_20250119_123456_a1b2c3d4.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=..."
+                  expires_at:
+                    type: string
+                    format: date-time
+                    description: When presigned URLs expire (7 days from refresh)
+                    example: "2025-01-26T12:34:56Z"
+                  expires_in_seconds:
+                    type: integer
+                    description: Seconds until presigned URLs expire
+                    example: 604800
+                  refreshed_at:
+                    type: string
+                    format: date-time
+                    description: When URLs were refreshed
+                    example: "2025-01-19T12:34:56Z"
+                  errors:
+                    type: array
+                    nullable: true
+                    description: Partial failures (some photos not found in S3)
+                    items:
+                      type: object
+                      properties:
+                        version:
+                          type: string
+                          example: "standard"
+                        error:
+                          type: string
+                          example: "File not found in S3"
+                        key:
+                          type: string
+                          example: "users/abc123/standard_20250119_123456_a1b2c3d4.jpg"
+        401:
+          description: |\
+            Unauthorized - Authentication failed. Common causes:
+            - Missing Authorization header
+            - Using Access Token instead of ID Token
+            - Expired token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        403:
+          description: Forbidden - user can only refresh their own photo URLs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: User not found or no photos available to refresh
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+        - CognitoJWTAuth: []
+
   /users/{userId}/photo:
     delete:
       summary: Delete user photo
