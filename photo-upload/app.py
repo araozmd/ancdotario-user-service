@@ -359,10 +359,13 @@ def lambda_handler(event, context):
         # Upload all versions to S3 and collect URLs
         image_urls = {}
         s3_keys = {}  # Store S3 keys for database
+        print(f"Starting S3 upload for {len(image_versions)} image versions")
+        
         try:
             for version_name, image_data in image_versions.items():
                 filename = f"users/{user_id}/{version_name}_{timestamp}_{unique_id}.jpg"
                 s3_keys[version_name] = filename
+                print(f"Uploading {version_name} version: {filename} ({len(image_data)} bytes)")
                 
                 s3_client.put_object(
                     Bucket=PHOTO_BUCKET_NAME,
@@ -378,11 +381,13 @@ def lambda_handler(event, context):
                         'optimized_size': str(len(image_data))
                     }
                 )
+                print(f"Successfully uploaded {version_name} to S3: {filename}")
                 
                 # Generate URLs based on version type
                 if version_name == 'thumbnail':
                     # Thumbnail is publicly accessible
                     image_urls[f"{version_name}_url"] = f"https://{PHOTO_BUCKET_NAME}.s3.amazonaws.com/{filename}"
+                    print(f"Generated public thumbnail URL: {image_urls[f'{version_name}_url']}")
                 else:
                     # Standard and high_res require presigned URLs (7 days expiry)
                     presigned_url = s3_client.generate_presigned_url(
@@ -391,6 +396,9 @@ def lambda_handler(event, context):
                         ExpiresIn=604800  # 7 days in seconds
                     )
                     image_urls[f"{version_name}_url"] = presigned_url
+                    print(f"Generated presigned URL for {version_name}: {len(presigned_url)} chars")
+            
+            print(f"All S3 uploads completed successfully. Total URLs generated: {len(image_urls)}")
             
         except ClientError as e:
             return create_error_response(
@@ -402,9 +410,12 @@ def lambda_handler(event, context):
         
         # Update or create user record with image URLs and S3 keys
         cleanup_result = {'deleted_files': [], 'deletion_errors': [], 'files_scanned': 0}
+        print(f"Starting database operations for user: {user_id}")
+        
         try:
             # Try to get existing user
             user = User.get(user_id)
+            print(f"Found existing user: {user.nickname}")
             
             # Optimized cleanup: Smart deletion based on database state
             # This is much faster than comprehensive scanning
@@ -415,8 +426,12 @@ def lambda_handler(event, context):
             user.standard_s3_key = s3_keys.get('standard')
             user.high_res_s3_key = s3_keys.get('high_res')
             user.image_url = image_urls.get('thumbnail_url')  # Backward compatibility - use public thumbnail
+            print(f"Updating user record with new photo URLs")
             user.save()
+            print(f"User record updated successfully")
         except User.DoesNotExist:
+            print(f"User {user_id} not found, creating new user")
+            
             # User doesn't exist, check if nickname was provided
             if not nickname:
                 return create_error_response(
@@ -426,6 +441,7 @@ def lambda_handler(event, context):
                 )
             
             # Check if nickname already exists
+            print(f"Checking if nickname '{nickname}' is available")
             existing_user = User.get_by_nickname(nickname)
             if existing_user:
                 return create_error_response(
@@ -438,6 +454,7 @@ def lambda_handler(event, context):
             cleanup_result = delete_user_photos_optimized(None, user_id, PHOTO_BUCKET_NAME)
             
             # Create new user with thumbnail URL and S3 keys
+            print(f"Creating new user record with nickname: {nickname}")
             user = User(
                 cognito_id=user_id,
                 nickname=nickname,
@@ -447,14 +464,18 @@ def lambda_handler(event, context):
                 image_url=image_urls.get('thumbnail_url')  # Backward compatibility - use public thumbnail
             )
             user.save()
+            print(f"New user created successfully")
         
         # Calculate total size reduction across all versions
         total_optimized_size = sum(len(data) for data in image_versions.values())
         size_reduction = f"{(1 - total_optimized_size / len(body)) * 100:.1f}%"
         
+        print(f"Preparing success response with {len(image_urls)} image URLs")
+        print(f"Response data: versions={len(image_versions)}, size_reduction={size_reduction}")
+        
         # Return success response with all image versions
         # Include presigned URLs since user is authenticated
-        return create_response(
+        response = create_response(
             200,
             json.dumps({
                 'message': 'Photo uploaded successfully',
@@ -477,6 +498,9 @@ def lambda_handler(event, context):
             event,
             ['POST']
         )
+        
+        print(f"Photo upload completed successfully - returning response")
+        return response
         
     except Exception as e:
         return create_error_response(
