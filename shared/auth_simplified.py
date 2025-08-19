@@ -49,18 +49,11 @@ def get_authenticated_user(event: dict) -> Tuple[Optional[Dict], Optional[Dict]]
 
 
 def create_response(status_code: int, body: str, event: dict, allowed_methods: list = None) -> dict:
-    """Create a Lambda response - CORS headers must be added by Lambda"""
-    # API Gateway CORS configuration only handles OPTIONS requests automatically
-    # For actual requests (GET, POST, DELETE), Lambda must return CORS headers
-    
+    """Create a Lambda response - CORS is handled by API Gateway"""
     return {
         'statusCode': status_code,
         'headers': {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',  # For dev, using wildcard
-            'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-            'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS',
-            'Access-Control-Allow-Credentials': 'false'
+            'Content-Type': 'application/json'
         },
         'body': body
     }
