@@ -93,7 +93,7 @@ Resources:
       Architectures:
         - x86_64
       MemorySize: 512  # Increased for image processing
-      Timeout: 30      # Longer timeout for image processing
+      Timeout: 60      # Extended timeout for image processing + S3 cleanup
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref UserTable

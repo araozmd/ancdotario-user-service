@@ -117,14 +117,15 @@ def create_image_versions(image_data):
         raise ValueError(f"Failed to process image: {str(e)}")
 
 
-def delete_all_user_photos(user_id, bucket_name):
+def delete_user_photos_optimized(user, user_id, bucket_name):
     """
-    Delete ALL existing photo files from S3 for a user (comprehensive cleanup)
+    Optimized photo cleanup - only scans S3 if user has existing photos in database
     
-    This function scans S3 for all photos with the user's prefix and deletes them,
-    ensuring no orphaned files remain from previous uploads.
+    For efficiency, this function first checks if the user has any photos tracked
+    in the database. If so, it uses a targeted approach to clean up S3.
     
     Args:
+        user: User model instance (can be None for new users)
         user_id: Cognito user ID 
         bucket_name: S3 bucket name
         
@@ -134,64 +135,145 @@ def delete_all_user_photos(user_id, bucket_name):
     cleanup_result = {
         'deleted_files': [],
         'deletion_errors': [],
-        'files_scanned': 0
+        'files_scanned': 0,
+        'strategy': 'none'
     }
     
     if not bucket_name:
         return cleanup_result
     
     try:
-        # Scan S3 for all objects with the user's prefix
-        user_prefix = f"users/{user_id}/"
-        print(f"Scanning S3 for photos with prefix: {user_prefix}")
-        
-        # List all objects with the user's prefix
-        paginator = s3_client.get_paginator('list_objects_v2')
-        page_iterator = paginator.paginate(
-            Bucket=bucket_name,
-            Prefix=user_prefix
+        # Check if user has existing photos in database
+        has_photos = user and (
+            user.thumbnail_url or 
+            user.standard_s3_key or 
+            user.high_res_s3_key or 
+            user.image_url
         )
         
-        # Process all pages (handles large numbers of photos)
-        for page in page_iterator:
-            if 'Contents' in page:
-                for obj in page['Contents']:
-                    cleanup_result['files_scanned'] += 1
-                    s3_key = obj['Key']
+        if not has_photos:
+            # New user or no photos - skip S3 scan for performance
+            cleanup_result['strategy'] = 'skip_no_photos'
+            print(f"No existing photos for user {user_id}, skipping S3 cleanup")
+            return cleanup_result
+        
+        # User has existing photos - use targeted cleanup
+        cleanup_result['strategy'] = 'targeted'
+        print(f"User has existing photos, performing targeted S3 cleanup")
+        
+        # First, delete known photo keys from database
+        known_keys = []
+        
+        # Extract known S3 keys
+        if user.standard_s3_key:
+            known_keys.append(user.standard_s3_key)
+        if user.high_res_s3_key:
+            known_keys.append(user.high_res_s3_key)
+            
+        # Extract keys from URLs
+        if user.thumbnail_url and 's3.amazonaws.com' in user.thumbnail_url:
+            key = user.thumbnail_url.split('.s3.amazonaws.com/')[-1].split('?')[0]  # Remove query params
+            known_keys.append(key)
+            
+        if user.image_url and 's3.amazonaws.com' in user.image_url and user.image_url != user.thumbnail_url:
+            key = user.image_url.split('.s3.amazonaws.com/')[-1].split('?')[0]
+            known_keys.append(key)
+        
+        # Batch delete known keys (much faster than individual deletes)
+        if known_keys:
+            delete_objects = [{'Key': key} for key in known_keys if key]
+            
+            if delete_objects:
+                try:
+                    response = s3_client.delete_objects(
+                        Bucket=bucket_name,
+                        Delete={'Objects': delete_objects}
+                    )
                     
+                    # Track successful deletions
+                    for deleted in response.get('Deleted', []):
+                        cleanup_result['deleted_files'].append(deleted['Key'])
+                        
+                    # Track errors
+                    for error in response.get('Errors', []):
+                        cleanup_result['deletion_errors'].append({
+                            'key': error['Key'],
+                            'error': error['Message'],
+                            'error_code': error['Code']
+                        })
+                        
+                    cleanup_result['files_scanned'] = len(delete_objects)
+                    print(f"Batch deleted {len(cleanup_result['deleted_files'])} known photos")
+                    
+                except ClientError as e:
+                    print(f"Batch delete failed: {str(e)}")
+                    # Fallback to individual deletes for known keys
+                    for key in known_keys:
+                        if key:
+                            try:
+                                s3_client.delete_object(Bucket=bucket_name, Key=key)
+                                cleanup_result['deleted_files'].append(key)
+                                cleanup_result['files_scanned'] += 1
+                            except ClientError as del_e:
+                                cleanup_result['deletion_errors'].append({
+                                    'key': key,
+                                    'error': str(del_e),
+                                    'error_code': del_e.response.get('Error', {}).get('Code', 'Unknown')
+                                })
+        
+        # Quick scan for any orphaned files (limited to first 100 objects)
+        # This catches files that might not be tracked in database
+        user_prefix = f"users/{user_id}/"
+        
+        try:
+            response = s3_client.list_objects_v2(
+                Bucket=bucket_name,
+                Prefix=user_prefix,
+                MaxKeys=100  # Limit for performance
+            )
+            
+            if 'Contents' in response:
+                orphaned_keys = []
+                for obj in response['Contents']:
+                    key = obj['Key']
+                    if key not in cleanup_result['deleted_files']:  # Not already deleted
+                        orphaned_keys.append(key)
+                
+                # Batch delete orphaned files
+                if orphaned_keys:
+                    delete_objects = [{'Key': key} for key in orphaned_keys]
                     try:
-                        # Delete the S3 object
-                        s3_client.delete_object(
+                        response = s3_client.delete_objects(
                             Bucket=bucket_name,
-                            Key=s3_key
+                            Delete={'Objects': delete_objects}
                         )
-                        cleanup_result['deleted_files'].append(s3_key)
-                        print(f"Deleted photo: {s3_key}")
+                        
+                        for deleted in response.get('Deleted', []):
+                            cleanup_result['deleted_files'].append(deleted['Key'])
+                            
+                        for error in response.get('Errors', []):
+                            cleanup_result['deletion_errors'].append({
+                                'key': error['Key'],
+                                'error': error['Message'],
+                                'error_code': error['Code']
+                            })
+                            
+                        cleanup_result['files_scanned'] += len(delete_objects)
+                        print(f"Cleaned up {len(orphaned_keys)} orphaned files")
                         
                     except ClientError as e:
-                        error_info = {
-                            'key': s3_key,
-                            'error': str(e),
-                            'error_code': e.response.get('Error', {}).get('Code', 'Unknown')
-                        }
-                        cleanup_result['deletion_errors'].append(error_info)
-                        print(f"Failed to delete photo {s3_key}: {str(e)}")
-                        # Continue with other deletions
+                        print(f"Orphaned file cleanup failed: {str(e)}")
+                        
+        except ClientError as e:
+            print(f"Orphaned file scan failed: {str(e)}")
+            # Non-critical error, continue
         
-        print(f"Cleanup complete: {len(cleanup_result['deleted_files'])} files deleted, "
+        print(f"Optimized cleanup complete: {len(cleanup_result['deleted_files'])} files deleted, "
               f"{len(cleanup_result['deletion_errors'])} errors, "
               f"{cleanup_result['files_scanned']} files scanned")
                         
-    except ClientError as e:
-        print(f"Error scanning S3 for user photos: {str(e)}")
-        # Add scan error to results
-        cleanup_result['deletion_errors'].append({
-            'operation': 'scan',
-            'error': str(e),
-            'error_code': e.response.get('Error', {}).get('Code', 'Unknown')
-        })
     except Exception as e:
-        print(f"Unexpected error during photo cleanup: {str(e)}")
+        print(f"Unexpected error during optimized photo cleanup: {str(e)}")
         cleanup_result['deletion_errors'].append({
             'operation': 'cleanup',
             'error': str(e),
@@ -324,9 +406,9 @@ def lambda_handler(event, context):
             # Try to get existing user
             user = User.get(user_id)
             
-            # Comprehensive cleanup: Delete ALL existing photos for this user from S3
-            # This ensures no orphaned files remain from previous uploads
-            cleanup_result = delete_all_user_photos(user_id, PHOTO_BUCKET_NAME)
+            # Optimized cleanup: Smart deletion based on database state
+            # This is much faster than comprehensive scanning
+            cleanup_result = delete_user_photos_optimized(user, user_id, PHOTO_BUCKET_NAME)
             
             # Update thumbnail URL (public) and S3 keys (for presigned URLs)
             user.thumbnail_url = image_urls.get('thumbnail_url')
@@ -351,6 +433,9 @@ def lambda_handler(event, context):
                     'Nickname already taken',
                     event
                 )
+            
+            # For new users, no cleanup needed (optimized)
+            cleanup_result = delete_user_photos_optimized(None, user_id, PHOTO_BUCKET_NAME)
             
             # Create new user with thumbnail URL and S3 keys
             user = User(
