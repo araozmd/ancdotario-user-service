@@ -457,10 +457,51 @@ paths:
 
     delete:
       summary: Delete current user account
-      description: Delete the authenticated user's account and all associated data
+      description: |\
+        Delete the authenticated user's account and **all associated data** including photos.
+        
+        **⚠️ DESTRUCTIVE OPERATION - Cannot be undone!**
+        
+        **Complete Resource Cleanup:**
+        - All photo versions (thumbnail, standard, high-res) deleted from S3
+        - User record permanently removed from database
+        - All presigned URLs become invalid
+        - Account data completely erased
+        
+        **Security Requirements:**
+        - Must include `?confirm=true` query parameter as safety measure
+        - Users can only delete their own accounts
+        - Optional deletion reason can be provided in request body
+        
+        **Performance:**
+        - Uses optimized batch S3 deletion (up to 1000 files per API call)
+        - Handles unlimited number of user photos with pagination
+        - Non-blocking: Account deletion succeeds even if some photos fail to delete
+        
+      parameters:
+        - name: confirm
+          in: query
+          required: true
+          description: Safety confirmation - must be "true" to proceed with deletion
+          schema:
+            type: string
+            enum: ["true"]
+            example: "true"
+      requestBody:
+        required: false
+        description: Optional deletion details
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  description: Optional reason for account deletion
+                  example: "User requested account deletion"
       responses:
         200:
-          description: User account deleted successfully
+          description: User account and all associated data deleted successfully
           content:
             application/json:
               schema:
@@ -469,8 +510,75 @@ paths:
                   message:
                     type: string
                     example: "User account deleted successfully"
+                  deleted_user:
+                    $ref: '#/components/schemas/User'
+                    description: User data that was deleted (for confirmation)
+                  cleanup:
+                    type: object
+                    description: Detailed cleanup results
+                    properties:
+                      photos_deleted:
+                        type: integer
+                        description: Number of photo files successfully deleted
+                        example: 15
+                      deleted_files:
+                        type: array
+                        nullable: true
+                        description: List of S3 keys that were deleted
+                        items:
+                          type: string
+                        example: ["users/abc123/thumbnail_20250119_123456.jpg", "users/abc123/standard_20250119_123456.jpg"]
+                      cleanup_errors:
+                        type: array
+                        nullable: true
+                        description: Any errors encountered during cleanup
+                        items:
+                          type: string
+                        example: null
+                  photos_deleted:
+                    type: array
+                    description: Legacy field - list of deleted photo keys (for backward compatibility)
+                    items:
+                      type: string
+                  deletion_reason:
+                    type: string
+                    description: Reason for deletion (user-provided or default)
+                    example: "User requested account deletion"
+                  deleted_at:
+                    type: string
+                    format: date-time
+                    description: Timestamp when deletion occurred
+                    example: "2025-08-19T04:30:00Z"
+                  warning:
+                    type: string
+                    description: Warning about irreversibility
+                    example: "This action cannot be undone"
+        400:
+          description: Bad request - missing confirmation parameter
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Account deletion requires confirmation"
+                  usage:
+                    type: string
+                    example: "DELETE /users/{userId}?confirm=true"
+                  warning:
+                    type: string
+                    example: "This action cannot be undone"
+                  user:
+                    $ref: '#/components/schemas/User'
         401:
           description: Unauthorized - invalid or missing JWT token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: User not found
           content:
             application/json:
               schema:
@@ -484,19 +592,59 @@ paths:
 
   /users/{userId}:
     delete:
-      summary: Delete user by ID (admin only)
-      description: Delete a specific user account by ID (requires admin privileges)
+      summary: Delete user by ID  
+      description: |\
+        Delete a specific user account by ID and **all associated data** including photos.
+        
+        **⚠️ DESTRUCTIVE OPERATION - Cannot be undone!**
+        
+        **Current Implementation:**
+        - Users can only delete their own accounts (no admin functionality yet)
+        - Same comprehensive cleanup as self-deletion endpoint
+        - Requires confirmation parameter for safety
+        
+        **Complete Resource Cleanup:**
+        - All photo versions (thumbnail, standard, high-res) deleted from S3
+        - User record permanently removed from database
+        - All presigned URLs become invalid
+        - Account data completely erased
+        
+        **Performance:**
+        - Uses optimized batch S3 deletion (up to 1000 files per API call)
+        - Handles unlimited number of user photos with pagination
+        - Non-blocking: Account deletion succeeds even if some photos fail to delete
+        
       parameters:
         - name: userId
           in: path
           required: true
-          description: Cognito user ID to delete
+          description: Cognito user ID to delete (must match authenticated user)
           schema:
             type: string
             pattern: '^[a-zA-Z0-9-_]+$'
+        - name: confirm
+          in: query
+          required: true
+          description: Safety confirmation - must be "true" to proceed with deletion
+          schema:
+            type: string
+            enum: ["true"]
+            example: "true"
+      requestBody:
+        required: false
+        description: Optional deletion details
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  description: Optional reason for account deletion
+                  example: "User requested account deletion"
       responses:
         200:
-          description: User deleted successfully
+          description: User account and all associated data deleted successfully
           content:
             application/json:
               schema:
@@ -504,7 +652,68 @@ paths:
                 properties:
                   message:
                     type: string
-                    example: "User deleted successfully"
+                    example: "User account deleted successfully"
+                  deleted_user:
+                    $ref: '#/components/schemas/User'
+                    description: User data that was deleted (for confirmation)
+                  cleanup:
+                    type: object
+                    description: Detailed cleanup results
+                    properties:
+                      photos_deleted:
+                        type: integer
+                        description: Number of photo files successfully deleted
+                        example: 15
+                      deleted_files:
+                        type: array
+                        nullable: true
+                        description: List of S3 keys that were deleted
+                        items:
+                          type: string
+                        example: ["users/abc123/thumbnail_20250119_123456.jpg", "users/abc123/standard_20250119_123456.jpg"]
+                      cleanup_errors:
+                        type: array
+                        nullable: true
+                        description: Any errors encountered during cleanup
+                        items:
+                          type: string
+                        example: null
+                  photos_deleted:
+                    type: array
+                    description: Legacy field - list of deleted photo keys (for backward compatibility)
+                    items:
+                      type: string
+                  deletion_reason:
+                    type: string
+                    description: Reason for deletion (user-provided or default)
+                    example: "User requested account deletion"
+                  deleted_at:
+                    type: string
+                    format: date-time
+                    description: Timestamp when deletion occurred
+                    example: "2025-08-19T04:30:00Z"
+                  warning:
+                    type: string
+                    description: Warning about irreversibility
+                    example: "This action cannot be undone"
+        400:
+          description: Bad request - missing confirmation parameter
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Account deletion requires confirmation"
+                  usage:
+                    type: string
+                    example: "DELETE /users/{userId}?confirm=true"
+                  warning:
+                    type: string
+                    example: "This action cannot be undone"
+                  user:
+                    $ref: '#/components/schemas/User'
         401:
           description: Unauthorized - invalid or missing JWT token
           content:
@@ -512,7 +721,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         403:
-          description: Forbidden - insufficient privileges
+          description: Forbidden - users can only delete their own accounts
           content:
             application/json:
               schema:

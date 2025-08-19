@@ -1,0 +1,26 @@
+{
+  "httpMethod": "DELETE",
+  "path": "/users/b4787498-9011-7011-b492-d54a8d1501b7",
+  "pathParameters": {
+    "userId": "b4787498-9011-7011-b492-d54a8d1501b7"
+  },
+  "queryStringParameters": {
+    "confirm": "true"
+  },
+  "requestContext": {
+    "authorizer": {
+      "claims": {
+        "sub": "b4787498-9011-7011-b492-d54a8d1501b7",
+        "email": "user@example.com",
+        "token_use": "id"
+      }
+    },
+    "requestTime": "2025-08-19T04:30:00Z"
+  },
+  "headers": {
+    "Authorization": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "Content-Type": "application/json"
+  },
+  "body": "{\"reason\": \"User requested account deletion\"}",
+  "isBase64Encoded": false
+}

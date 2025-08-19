@@ -84,6 +84,37 @@ Resources:
                     - !Ref Environment
             Identity:
               Header: Authorization
+      GatewayResponses:
+        UNAUTHORIZED:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: !If 
+                - IsDevEnvironment
+                - "'*'"
+                - !Sub "'https://${Environment}.anecdotario.com,https://anecdotario.com'"
+              Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              Access-Control-Allow-Methods: "'GET,POST,DELETE,OPTIONS'"
+              Access-Control-Allow-Credentials: "'false'"
+        FORBIDDEN:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: !If 
+                - IsDevEnvironment
+                - "'*'"
+                - !Sub "'https://${Environment}.anecdotario.com,https://anecdotario.com'"
+              Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              Access-Control-Allow-Methods: "'GET,POST,DELETE,OPTIONS'"
+              Access-Control-Allow-Credentials: "'false'"
+        BAD_REQUEST_BODY:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: !If 
+                - IsDevEnvironment
+                - "'*'"
+                - !Sub "'https://${Environment}.anecdotario.com,https://anecdotario.com'"
+              Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              Access-Control-Allow-Methods: "'GET,POST,DELETE,OPTIONS'"
+              Access-Control-Allow-Credentials: "'false'"
   PhotoUploadFunction:
     Type: AWS::Serverless::Function
     Properties:
