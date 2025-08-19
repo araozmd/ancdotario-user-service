@@ -117,6 +117,65 @@ def create_image_versions(image_data):
         raise ValueError(f"Failed to process image: {str(e)}")
 
 
+def delete_existing_photos(user, bucket_name):
+    """
+    Delete existing photo files from S3 when updating a user's photo
+    
+    Args:
+        user: User model instance with existing photo data
+        bucket_name: S3 bucket name
+        
+    Returns:
+        list: List of deleted S3 keys
+    """
+    deleted_files = []
+    
+    if not bucket_name:
+        return deleted_files
+    
+    try:
+        # Get existing S3 keys from user record
+        existing_keys = []
+        
+        # Extract S3 keys from URLs and direct keys
+        if user.thumbnail_url and 's3.amazonaws.com' in user.thumbnail_url:
+            # Extract key from URL: https://bucket.s3.amazonaws.com/path/file.jpg
+            key = user.thumbnail_url.split('.s3.amazonaws.com/')[-1]
+            existing_keys.append(key)
+        
+        if user.standard_s3_key:
+            existing_keys.append(user.standard_s3_key)
+            
+        if user.high_res_s3_key:
+            existing_keys.append(user.high_res_s3_key)
+        
+        # Also check legacy image_url
+        if user.image_url and 's3.amazonaws.com' in user.image_url:
+            key = user.image_url.split('.s3.amazonaws.com/')[-1]
+            if key not in existing_keys:
+                existing_keys.append(key)
+        
+        # Delete each existing file
+        for key in existing_keys:
+            if key:  # Ensure key is not empty
+                try:
+                    s3_client.delete_object(
+                        Bucket=bucket_name,
+                        Key=key
+                    )
+                    deleted_files.append(key)
+                    print(f"Deleted old photo: {key}")
+                except ClientError as e:
+                    print(f"Failed to delete old photo {key}: {str(e)}")
+                    # Continue with other deletions
+                    
+    except Exception as e:
+        print(f"Error during old photo cleanup: {str(e)}")
+        # Don't fail the upload if cleanup fails
+    
+    return deleted_files
+
+
 def lambda_handler(event, context):
     """Lambda handler for photo upload - handles POST /users/{userId}/photo"""
     try:
@@ -235,9 +294,14 @@ def lambda_handler(event, context):
             )
         
         # Update or create user record with image URLs and S3 keys
+        deleted_old_files = []
         try:
             # Try to get existing user
             user = User.get(user_id)
+            
+            # Delete old photos before updating with new URLs
+            deleted_old_files = delete_existing_photos(user, PHOTO_BUCKET_NAME)
+            
             # Update thumbnail URL (public) and S3 keys (for presigned URLs)
             user.thumbnail_url = image_urls.get('thumbnail_url')
             user.standard_s3_key = s3_keys.get('standard')
@@ -291,6 +355,7 @@ def lambda_handler(event, context):
                 'photo_url': image_urls.get('thumbnail_url'),  # Backward compatibility - public thumbnail
                 'versions_created': len(image_versions),
                 'size_reduction': size_reduction,
+                'old_files_deleted': deleted_old_files if deleted_old_files else None,
                 'user': user.to_dict(include_presigned_urls=True, s3_client=s3_client)
             }),
             event,

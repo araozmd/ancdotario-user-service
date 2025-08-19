@@ -114,6 +114,11 @@ paths:
       description: |
         Upload and optimize a user's profile photo with Instagram-style multi-version processing.
         
+        **Update Behavior:**
+        - **New uploads**: Creates user profile with photos
+        - **Photo updates**: Automatically deletes old photo versions before uploading new ones
+        - Prevents S3 storage bloat by cleaning up replaced photos
+        
         **Security Model:**
         - Thumbnail (150x150): Publicly accessible for browsing/search
         - Standard (320x320) & High-res (800x800): Protected with presigned URLs (7-day expiry)
@@ -195,6 +200,13 @@ paths:
                     type: string
                     description: Percentage reduction in total file size
                     example: "65.2%"
+                  old_files_deleted:
+                    type: array
+                    nullable: true
+                    description: List of old photo files deleted during update (null for new uploads)
+                    items:
+                      type: string
+                    example: ["users/abc123/thumbnail_20250115_123456_old123.jpg", "users/abc123/standard_20250115_123456_old123.jpg"]
                   user:
                     $ref: '#/components/schemas/User'
         400:
