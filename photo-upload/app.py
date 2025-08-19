@@ -352,14 +352,52 @@ def lambda_handler(event, context):
                 {'error': str(e)}
             )
         
+        # Update or create user record - Get user info and do cleanup FIRST
+        cleanup_result = {'deleted_files': [], 'deletion_errors': [], 'files_scanned': 0}
+        print(f"Starting database operations for user: {user_id}")
+        
+        try:
+            # Try to get existing user
+            user = User.get(user_id)
+            print(f"Found existing user: {user.nickname}")
+            
+            # CRITICAL: Run cleanup BEFORE uploading new files to prevent deleting new uploads
+            print(f"Running cleanup BEFORE upload to prevent deleting new files")
+            cleanup_result = delete_user_photos_optimized(user, user_id, PHOTO_BUCKET_NAME)
+            
+        except User.DoesNotExist:
+            print(f"User {user_id} not found, will create new user")
+            
+            # User doesn't exist, check if nickname was provided
+            if not nickname:
+                return create_error_response(
+                    400,
+                    'User not found. Please provide a nickname for first-time upload.',
+                    event
+                )
+            
+            # Check if nickname already exists
+            print(f"Checking if nickname '{nickname}' is available")
+            existing_user = User.get_by_nickname(nickname)
+            if existing_user:
+                return create_error_response(
+                    409,
+                    'Nickname already taken',
+                    event
+                )
+            
+            # For new users, no cleanup needed (optimized)
+            cleanup_result = delete_user_photos_optimized(None, user_id, PHOTO_BUCKET_NAME)
+            user = None  # Will create after upload
+        
         # Generate unique filename base
         timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
         unique_id = str(uuid.uuid4())[:8]
         
-        # Upload all versions to S3 and collect URLs
+        # Upload all versions to S3 and collect URLs (AFTER cleanup)
         image_urls = {}
         s3_keys = {}  # Store S3 keys for database
-        print(f"Starting S3 upload for {len(image_versions)} image versions")
+        print(f"Starting S3 upload for {len(image_versions)} image versions (after cleanup)")
         
         try:
             for version_name, image_data in image_versions.items():
@@ -408,52 +446,20 @@ def lambda_handler(event, context):
                 {'details': str(e)}
             )
         
-        # Update or create user record with image URLs and S3 keys
-        cleanup_result = {'deleted_files': [], 'deletion_errors': [], 'files_scanned': 0}
-        print(f"Starting database operations for user: {user_id}")
+        # Update or create user record with new image URLs
+        print(f"Updating database with new photo URLs")
         
-        try:
-            # Try to get existing user
-            user = User.get(user_id)
-            print(f"Found existing user: {user.nickname}")
-            
-            # Optimized cleanup: Smart deletion based on database state
-            # This is much faster than comprehensive scanning
-            cleanup_result = delete_user_photos_optimized(user, user_id, PHOTO_BUCKET_NAME)
-            
-            # Update thumbnail URL (public) and S3 keys (for presigned URLs)
+        if user:
+            # Update existing user
             user.thumbnail_url = image_urls.get('thumbnail_url')
             user.standard_s3_key = s3_keys.get('standard')
             user.high_res_s3_key = s3_keys.get('high_res')
             user.image_url = image_urls.get('thumbnail_url')  # Backward compatibility - use public thumbnail
-            print(f"Updating user record with new photo URLs")
+            print(f"Updating existing user record")
             user.save()
             print(f"User record updated successfully")
-        except User.DoesNotExist:
-            print(f"User {user_id} not found, creating new user")
-            
-            # User doesn't exist, check if nickname was provided
-            if not nickname:
-                return create_error_response(
-                    400,
-                    'User not found. Please provide a nickname for first-time upload.',
-                    event
-                )
-            
-            # Check if nickname already exists
-            print(f"Checking if nickname '{nickname}' is available")
-            existing_user = User.get_by_nickname(nickname)
-            if existing_user:
-                return create_error_response(
-                    409,
-                    'Nickname already taken',
-                    event
-                )
-            
-            # For new users, no cleanup needed (optimized)
-            cleanup_result = delete_user_photos_optimized(None, user_id, PHOTO_BUCKET_NAME)
-            
-            # Create new user with thumbnail URL and S3 keys
+        else:
+            # Create new user
             print(f"Creating new user record with nickname: {nickname}")
             user = User(
                 cognito_id=user_id,
