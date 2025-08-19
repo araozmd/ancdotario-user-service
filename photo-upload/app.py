@@ -117,63 +117,88 @@ def create_image_versions(image_data):
         raise ValueError(f"Failed to process image: {str(e)}")
 
 
-def delete_existing_photos(user, bucket_name):
+def delete_all_user_photos(user_id, bucket_name):
     """
-    Delete existing photo files from S3 when updating a user's photo
+    Delete ALL existing photo files from S3 for a user (comprehensive cleanup)
+    
+    This function scans S3 for all photos with the user's prefix and deletes them,
+    ensuring no orphaned files remain from previous uploads.
     
     Args:
-        user: User model instance with existing photo data
+        user_id: Cognito user ID 
         bucket_name: S3 bucket name
         
     Returns:
-        list: List of deleted S3 keys
+        dict: Cleanup results with deleted files and any errors
     """
-    deleted_files = []
+    cleanup_result = {
+        'deleted_files': [],
+        'deletion_errors': [],
+        'files_scanned': 0
+    }
     
     if not bucket_name:
-        return deleted_files
+        return cleanup_result
     
     try:
-        # Get existing S3 keys from user record
-        existing_keys = []
+        # Scan S3 for all objects with the user's prefix
+        user_prefix = f"users/{user_id}/"
+        print(f"Scanning S3 for photos with prefix: {user_prefix}")
         
-        # Extract S3 keys from URLs and direct keys
-        if user.thumbnail_url and 's3.amazonaws.com' in user.thumbnail_url:
-            # Extract key from URL: https://bucket.s3.amazonaws.com/path/file.jpg
-            key = user.thumbnail_url.split('.s3.amazonaws.com/')[-1]
-            existing_keys.append(key)
+        # List all objects with the user's prefix
+        paginator = s3_client.get_paginator('list_objects_v2')
+        page_iterator = paginator.paginate(
+            Bucket=bucket_name,
+            Prefix=user_prefix
+        )
         
-        if user.standard_s3_key:
-            existing_keys.append(user.standard_s3_key)
-            
-        if user.high_res_s3_key:
-            existing_keys.append(user.high_res_s3_key)
-        
-        # Also check legacy image_url
-        if user.image_url and 's3.amazonaws.com' in user.image_url:
-            key = user.image_url.split('.s3.amazonaws.com/')[-1]
-            if key not in existing_keys:
-                existing_keys.append(key)
-        
-        # Delete each existing file
-        for key in existing_keys:
-            if key:  # Ensure key is not empty
-                try:
-                    s3_client.delete_object(
-                        Bucket=bucket_name,
-                        Key=key
-                    )
-                    deleted_files.append(key)
-                    print(f"Deleted old photo: {key}")
-                except ClientError as e:
-                    print(f"Failed to delete old photo {key}: {str(e)}")
-                    # Continue with other deletions
+        # Process all pages (handles large numbers of photos)
+        for page in page_iterator:
+            if 'Contents' in page:
+                for obj in page['Contents']:
+                    cleanup_result['files_scanned'] += 1
+                    s3_key = obj['Key']
                     
+                    try:
+                        # Delete the S3 object
+                        s3_client.delete_object(
+                            Bucket=bucket_name,
+                            Key=s3_key
+                        )
+                        cleanup_result['deleted_files'].append(s3_key)
+                        print(f"Deleted photo: {s3_key}")
+                        
+                    except ClientError as e:
+                        error_info = {
+                            'key': s3_key,
+                            'error': str(e),
+                            'error_code': e.response.get('Error', {}).get('Code', 'Unknown')
+                        }
+                        cleanup_result['deletion_errors'].append(error_info)
+                        print(f"Failed to delete photo {s3_key}: {str(e)}")
+                        # Continue with other deletions
+        
+        print(f"Cleanup complete: {len(cleanup_result['deleted_files'])} files deleted, "
+              f"{len(cleanup_result['deletion_errors'])} errors, "
+              f"{cleanup_result['files_scanned']} files scanned")
+                        
+    except ClientError as e:
+        print(f"Error scanning S3 for user photos: {str(e)}")
+        # Add scan error to results
+        cleanup_result['deletion_errors'].append({
+            'operation': 'scan',
+            'error': str(e),
+            'error_code': e.response.get('Error', {}).get('Code', 'Unknown')
+        })
     except Exception as e:
-        print(f"Error during old photo cleanup: {str(e)}")
-        # Don't fail the upload if cleanup fails
+        print(f"Unexpected error during photo cleanup: {str(e)}")
+        cleanup_result['deletion_errors'].append({
+            'operation': 'cleanup',
+            'error': str(e),
+            'error_code': 'UnexpectedError'
+        })
     
-    return deleted_files
+    return cleanup_result
 
 
 def lambda_handler(event, context):
@@ -294,13 +319,14 @@ def lambda_handler(event, context):
             )
         
         # Update or create user record with image URLs and S3 keys
-        deleted_old_files = []
+        cleanup_result = {'deleted_files': [], 'deletion_errors': [], 'files_scanned': 0}
         try:
             # Try to get existing user
             user = User.get(user_id)
             
-            # Delete old photos before updating with new URLs
-            deleted_old_files = delete_existing_photos(user, PHOTO_BUCKET_NAME)
+            # Comprehensive cleanup: Delete ALL existing photos for this user from S3
+            # This ensures no orphaned files remain from previous uploads
+            cleanup_result = delete_all_user_photos(user_id, PHOTO_BUCKET_NAME)
             
             # Update thumbnail URL (public) and S3 keys (for presigned URLs)
             user.thumbnail_url = image_urls.get('thumbnail_url')
@@ -355,7 +381,12 @@ def lambda_handler(event, context):
                 'photo_url': image_urls.get('thumbnail_url'),  # Backward compatibility - public thumbnail
                 'versions_created': len(image_versions),
                 'size_reduction': size_reduction,
-                'old_files_deleted': deleted_old_files if deleted_old_files else None,
+                'cleanup': {
+                    'files_scanned': cleanup_result['files_scanned'],
+                    'files_deleted': len(cleanup_result['deleted_files']),
+                    'deleted_files': cleanup_result['deleted_files'] if cleanup_result['deleted_files'] else None,
+                    'deletion_errors': cleanup_result['deletion_errors'] if cleanup_result['deletion_errors'] else None
+                },
                 'user': user.to_dict(include_presigned_urls=True, s3_client=s3_client)
             }),
             event,
