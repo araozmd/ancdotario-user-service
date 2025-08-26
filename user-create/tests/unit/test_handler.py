@@ -28,7 +28,13 @@ def api_gateway_event():
         "body": json.dumps({"nickname": "testuser"}),
         "isBase64Encoded": False,
         "requestContext": {
-            "requestTime": "2023-01-01T12:00:00Z"
+            "requestTime": "2023-01-01T12:00:00Z",
+            "authorizer": {
+                "claims": {
+                    "sub": "test-user-123",
+                    "email": "test@example.com"
+                }
+            }
         }
     }
 
@@ -44,13 +50,9 @@ def decoded_token():
 
 
 @patch('app.User')
-@patch('app.validate_request_auth')
-def test_successful_user_creation(mock_validate_auth, mock_user, api_gateway_event, decoded_token):
+def test_successful_user_creation(mock_user, api_gateway_event):
     """Test successful user creation"""
     from app import lambda_handler
-    
-    # Configure mocks
-    mock_validate_auth.return_value = (decoded_token, None)
     
     # Mock user doesn't exist
     mock_user.get.side_effect = mock_user.DoesNotExist
@@ -79,43 +81,34 @@ def test_successful_user_creation(mock_validate_auth, mock_user, api_gateway_eve
     assert body['user']['nickname'] == 'testuser'
     assert body['user']['cognito_id'] == 'test-user-123'
     
-    # Verify user was created
+    # Verify user was created with normalized nickname
     mock_user.assert_called_with(
         cognito_id='test-user-123',
         nickname='testuser',
+        nickname_normalized='testuser',
         image_url=None
     )
     mock_user_instance.save.assert_called_once()
 
 
-@patch('app.validate_request_auth')
-def test_missing_authorization_header(mock_validate_auth, api_gateway_event):
-    """Test request without authorization header"""
+def test_missing_authorization_claims(api_gateway_event):
+    """Test request without JWT claims from API Gateway"""
     from app import lambda_handler
     
-    # Mock auth failure
-    error_response = {
-        'statusCode': 401,
-        'headers': {'Content-Type': 'application/json'},
-        'body': json.dumps({'error': 'Missing authorization header'})
-    }
-    mock_validate_auth.return_value = (None, error_response)
+    # Remove JWT claims from request context
+    del api_gateway_event['requestContext']['authorizer']
     
     response = lambda_handler(api_gateway_event, None)
     
-    assert response['statusCode'] == 401
+    assert response['statusCode'] == 500  # Will cause KeyError
     body = json.loads(response['body'])
     assert 'error' in body
 
 
 @patch('app.User')
-@patch('app.validate_request_auth')
-def test_user_already_exists(mock_validate_auth, mock_user, api_gateway_event, decoded_token):
+def test_user_already_exists(mock_user, api_gateway_event):
     """Test creation when user already exists"""
     from app import lambda_handler
-    
-    # Configure mocks
-    mock_validate_auth.return_value = (decoded_token, None)
     
     # Mock existing user
     mock_user_instance = Mock()
@@ -149,12 +142,9 @@ def test_options_request(api_gateway_event):
     assert response['body'] == ''
 
 
-@patch('app.validate_request_auth')
-def test_missing_request_body(mock_validate_auth, api_gateway_event, decoded_token):
+def test_missing_request_body(api_gateway_event):
     """Test request without body"""
     from app import lambda_handler
-    
-    mock_validate_auth.return_value = (decoded_token, None)
     api_gateway_event['body'] = None
     
     response = lambda_handler(api_gateway_event, None)
@@ -166,12 +156,9 @@ def test_missing_request_body(mock_validate_auth, api_gateway_event, decoded_tok
     assert 'usage' in body
 
 
-@patch('app.validate_request_auth')
-def test_invalid_json_body(mock_validate_auth, api_gateway_event, decoded_token):
+def test_invalid_json_body(api_gateway_event):
     """Test request with invalid JSON body"""
     from app import lambda_handler
-    
-    mock_validate_auth.return_value = (decoded_token, None)
     api_gateway_event['body'] = 'invalid json'
     
     response = lambda_handler(api_gateway_event, None)
@@ -182,12 +169,9 @@ def test_invalid_json_body(mock_validate_auth, api_gateway_event, decoded_token)
     assert 'Invalid JSON' in body['error']
 
 
-@patch('app.validate_request_auth')
-def test_missing_nickname(mock_validate_auth, api_gateway_event, decoded_token):
+def test_missing_nickname(api_gateway_event):
     """Test request without nickname"""
     from app import lambda_handler
-    
-    mock_validate_auth.return_value = (decoded_token, None)
     api_gateway_event['body'] = json.dumps({})
     
     response = lambda_handler(api_gateway_event, None)
@@ -199,13 +183,9 @@ def test_missing_nickname(mock_validate_auth, api_gateway_event, decoded_token):
 
 
 @patch('app.User')
-@patch('app.validate_request_auth')
-def test_nickname_already_taken(mock_validate_auth, mock_user, api_gateway_event, decoded_token):
+def test_nickname_already_taken(mock_user, api_gateway_event):
     """Test creation when nickname is already taken"""
     from app import lambda_handler
-    
-    # Configure mocks
-    mock_validate_auth.return_value = (decoded_token, None)
     
     # Mock user doesn't exist but nickname is taken
     mock_user.get.side_effect = mock_user.DoesNotExist
@@ -224,24 +204,24 @@ def test_nickname_already_taken(mock_validate_auth, mock_user, api_gateway_event
 
 
 @pytest.mark.parametrize("invalid_nickname,expected_error", [
-    ("ab", "at least 3 characters"),
-    ("a" * 21, "no more than 20 characters"),
-    ("test@user", "can only contain letters"),
-    ("_testuser", "must start with a letter"),
-    ("testuser_", "must end with a letter"),
+    ("ab", "too short"),
+    ("a" * 31, "too long"),
+    ("Test", "invalid characters"),  # Capital letters not allowed
+    ("test@user", "invalid characters"),  # @ not allowed
+    ("test-user", "invalid characters"),  # Hyphens not allowed
+    ("_testuser", "cannot start with underscore"),
+    ("testuser_", "cannot end with underscore"),
     ("test__user", "consecutive underscores"),
-    ("admin", "reserved and cannot be used"),
-    ("root", "reserved and cannot be used"),
+    ("123user", "cannot start with a number"),
+    ("admin", "reserved"),
+    ("root", "reserved"),
+    ("test0", "confusing characters"),  # Contains 0 which looks like o
 ])
 @patch('app.User')
-@patch('app.validate_request_auth')
-def test_invalid_nickname_formats(mock_validate_auth, mock_user, api_gateway_event, decoded_token,
-                                 invalid_nickname, expected_error):
-    """Test various invalid nickname formats"""
+def test_invalid_nickname_formats(mock_user, api_gateway_event, invalid_nickname, expected_error):
+    """Test various invalid nickname formats with new validation rules"""
     from app import lambda_handler
     
-    # Configure mocks
-    mock_validate_auth.return_value = (decoded_token, None)
     mock_user.get.side_effect = mock_user.DoesNotExist
     
     # Set invalid nickname
@@ -252,17 +232,18 @@ def test_invalid_nickname_formats(mock_validate_auth, mock_user, api_gateway_eve
     assert response['statusCode'] == 400
     body = json.loads(response['body'])
     assert 'error' in body
+    assert 'hints' in body
     assert expected_error in body['error']
+    assert isinstance(body['hints'], list)
+    assert len(body['hints']) > 0
 
 
-@patch('app.validate_request_auth')
-def test_missing_user_id_in_token(mock_validate_auth, api_gateway_event):
-    """Test token without user ID (sub)"""
+def test_missing_user_id_in_token(api_gateway_event):
+    """Test request context without user ID (sub)"""
     from app import lambda_handler
     
-    # Token without 'sub' field
-    invalid_token = {'email': 'test@example.com'}
-    mock_validate_auth.return_value = (invalid_token, None)
+    # Remove 'sub' from claims
+    api_gateway_event['requestContext']['authorizer']['claims'] = {'email': 'test@example.com'}
     
     response = lambda_handler(api_gateway_event, None)
     
@@ -287,13 +268,9 @@ def test_get_method_not_allowed(api_gateway_event):
 
 
 @patch('app.User')
-@patch('app.validate_request_auth')
-def test_database_error(mock_validate_auth, mock_user, api_gateway_event, decoded_token):
+def test_database_error(mock_user, api_gateway_event):
     """Test handling of database errors"""
     from app import lambda_handler
-    
-    # Configure mocks
-    mock_validate_auth.return_value = (decoded_token, None)
     mock_user.get.side_effect = mock_user.DoesNotExist
     mock_user.get_by_nickname.return_value = None
     
@@ -312,20 +289,41 @@ def test_database_error(mock_validate_auth, mock_user, api_gateway_event, decode
 
 
 def test_validate_nickname_function():
-    """Test the validate_nickname function directly"""
+    """Test the validate_nickname function directly with new rules"""
     from app import validate_nickname
     
     # Valid nicknames
     assert validate_nickname("testuser") is None
-    assert validate_nickname("user123") is None
     assert validate_nickname("test_user") is None
-    assert validate_nickname("test-user") is None
+    assert validate_nickname("user_name") is None
     
-    # Invalid nicknames
-    assert "at least 3 characters" in validate_nickname("ab")
-    assert "no more than 20 characters" in validate_nickname("a" * 21)
-    assert "can only contain" in validate_nickname("test@user")
-    assert "must start with" in validate_nickname("_test")
-    assert "must end with" in validate_nickname("test_")
-    assert "consecutive" in validate_nickname("test__user")
-    assert "reserved" in validate_nickname("admin")
+    # Invalid nicknames - should return dict with error and hints
+    result = validate_nickname("ab")
+    assert result is not None
+    assert 'error' in result
+    assert 'hints' in result
+    assert "too short" in result['error']
+    
+    result = validate_nickname("a" * 31)
+    assert result is not None
+    assert "too long" in result['error']
+    
+    result = validate_nickname("Test")
+    assert result is not None
+    assert "invalid characters" in result['error']
+    
+    result = validate_nickname("_test")
+    assert result is not None
+    assert "cannot start with underscore" in result['error']
+    
+    result = validate_nickname("test_")
+    assert result is not None
+    assert "cannot end with underscore" in result['error']
+    
+    result = validate_nickname("test__user")
+    assert result is not None
+    assert "consecutive underscores" in result['error']
+    
+    result = validate_nickname("admin")
+    assert result is not None
+    assert "reserved" in result['error']

@@ -56,7 +56,7 @@ paths:
         **Business Rules:**
         - User ID comes from JWT token (sub claim)
         - Nickname must be unique across all users
-        - Nickname must follow validation rules (3-20 chars, alphanumeric + underscore/hyphen)
+        - Nickname must follow validation rules (3-30 chars, lowercase letters + digits + single underscore)
         - Reserved words are not allowed as nicknames
       operationId: createUser
       security:
@@ -185,9 +185,9 @@ paths:
           description: The unique nickname of the user to retrieve
           schema:
             type: string
-            pattern: '^[a-zA-Z0-9_-]{3,20}$'
+            pattern: '^[a-z0-9_]{3,30}$'
             minLength: 3
-            maxLength: 20
+            maxLength: 30
           examples:
             simple:
               summary: Simple nickname
@@ -410,10 +410,18 @@ components:
           example: "us-east-1:12345678-1234-1234-1234-123456789012"
         nickname:
           type: string
-          description: Unique user nickname (3-20 characters, alphanumeric + underscore/hyphen)
-          pattern: '^[a-zA-Z0-9_-]{3,20}$'
+          description: |
+            Unique user nickname with strict validation rules:
+            - 3-30 characters long
+            - Only lowercase letters (a-z), digits (0-9), and underscores (_)
+            - Cannot start or end with underscore
+            - No consecutive underscores
+            - Cannot start with a digit
+            - Must not be a reserved word
+            - Case-insensitive uniqueness (stored normalized)
+          pattern: '^[a-z][a-z0-9]*(_[a-z0-9]+)*$'
           minLength: 3
-          maxLength: 20
+          maxLength: 30
           example: "john_doe"
         image_url:
           type: string
@@ -445,14 +453,16 @@ components:
           type: string
           description: |
             Unique nickname for the user. Must follow validation rules:
-            - 3-20 characters long
-            - Alphanumeric characters, underscores, and hyphens only
-            - Must start and end with alphanumeric character
-            - No consecutive special characters
-            - Cannot be a reserved word
-          pattern: '^[a-zA-Z0-9_-]{3,20}$'
+            - 3-30 characters long
+            - Only lowercase letters (a-z), digits (0-9), and underscores (_)
+            - Must start with a letter (a-z)
+            - Cannot start or end with underscore
+            - No consecutive underscores
+            - Cannot be a reserved word (admin, api, support, etc.)
+            - Case-insensitive uniqueness
+          pattern: '^[a-z][a-z0-9]*(_[a-z0-9]+)*$'
           minLength: 3
-          maxLength: 20
+          maxLength: 30
           example: "john_doe"
       required:
         - nickname
@@ -556,9 +566,9 @@ components:
           description: |
             Required only for new users (when user doesn't exist).
             Must be unique and follow nickname validation rules.
-          pattern: '^[a-zA-Z0-9_-]{3,20}$'
+          pattern: '^[a-z][a-z0-9]*(_[a-z0-9]+)*$'
           minLength: 3
-          maxLength: 20
+          maxLength: 30
           example: "new_user123"
       required:
         - image
@@ -601,6 +611,14 @@ components:
           type: string
           description: Error message describing what went wrong
           example: "Nickname already taken"
+        hints:
+          type: array
+          description: Array of detailed hints to help the user fix validation errors
+          items:
+            type: string
+          example: 
+            - "Only lowercase letters (a-z), digits (0-9), and underscores (_) are allowed"
+            - "Nickname must be between 3-30 characters long"
         details:
           type: string
           description: Additional technical details (may be omitted in production)
@@ -625,10 +643,39 @@ components:
               value:
                 error: "Nickname is required"
                 usage: "POST /users with {\"nickname\": \"your_nickname\"}"
-            invalid_nickname:
-              summary: Invalid nickname format
+            invalid_nickname_length:
+              summary: Invalid nickname length
               value:
-                error: "Nickname must be between 3 and 20 characters"
+                error: "Nickname is too short"
+                hints:
+                  - "Nickname must be between 3-30 characters long"
+            invalid_nickname_characters:
+              summary: Invalid characters in nickname
+              value:
+                error: "Nickname contains invalid characters"
+                hints:
+                  - "Only lowercase letters (a-z), digits (0-9), and underscores (_) are allowed"
+                  - "Invalid characters found: A, -, @"
+            nickname_underscore_rules:
+              summary: Nickname underscore violations
+              value:
+                error: "Nickname cannot start with underscore"
+                hints:
+                  - "Nickname must start with a letter (a-z) or digit (0-9)"
+            nickname_reserved_word:
+              summary: Reserved word used as nickname
+              value:
+                error: "Nickname is reserved"
+                hints:
+                  - "\"admin\" is a reserved word and cannot be used"
+                  - "Please choose a different nickname"
+            nickname_confusing_characters:
+              summary: Confusing character combinations
+              value:
+                error: "Nickname contains potentially confusing characters"
+                hints:
+                  - "Contains confusing characters that look similar (o, 0)"
+                  - "Please choose characters that are clearly distinguishable"
             missing_confirmation:
               summary: Missing deletion confirmation
               value:

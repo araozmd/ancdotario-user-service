@@ -7,14 +7,15 @@ from pynamodb.indexes import GlobalSecondaryIndex, AllProjection
 
 class NicknameIndex(GlobalSecondaryIndex):
     """
-    Global secondary index for nickname lookups
+    Global secondary index for case-insensitive nickname lookups
+    Uses normalized (lowercase) nickname for uniqueness checking
     """
     class Meta:
         index_name = 'nickname-index'
         projection = AllProjection()
         # No capacity units needed for on-demand billing mode
     
-    nickname = UnicodeAttribute(hash_key=True)
+    nickname_normalized = UnicodeAttribute(hash_key=True)
 
 
 class User(Model):
@@ -30,8 +31,11 @@ class User(Model):
     # Primary key - Cognito user ID (sub)
     cognito_id = UnicodeAttribute(hash_key=True)
     
-    # Searchable nickname (unique)
+    # Display nickname (original case preserved)
     nickname = UnicodeAttribute()
+    
+    # Normalized nickname for uniqueness checking (lowercase)
+    nickname_normalized = UnicodeAttribute()
     
     # S3 URLs and keys for profile images (multiple versions)
     image_url = UnicodeAttribute(null=True)              # Legacy field for backward compatibility
@@ -47,15 +51,20 @@ class User(Model):
     nickname_index = NicknameIndex()
     
     def save(self, **kwargs):
-        """Override save to update timestamp"""
+        """Override save to update timestamp and normalize nickname"""
         self.updated_at = datetime.utcnow()
+        # Ensure nickname is normalized for uniqueness checking
+        if hasattr(self, 'nickname') and self.nickname:
+            self.nickname_normalized = self.nickname.lower()
         super().save(**kwargs)
     
     @classmethod
     def get_by_nickname(cls, nickname):
-        """Get user by nickname using GSI"""
+        """Get user by nickname using GSI (case-insensitive)"""
         try:
-            results = list(cls.nickname_index.query(nickname))
+            # Normalize the search nickname for case-insensitive matching
+            normalized_nickname = nickname.lower()
+            results = list(cls.nickname_index.query(normalized_nickname))
             return results[0] if results else None
         except Exception:
             return None

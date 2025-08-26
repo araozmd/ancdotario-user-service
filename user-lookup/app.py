@@ -34,11 +34,11 @@ def lambda_handler(event, context):
                 {'usage': 'GET /users/{nickname} with Authorization header'}
             )
         
-        # Validate nickname format (basic validation)
-        if len(nickname) < 3 or len(nickname) > 20:
+        # Validate nickname format (basic validation for lookup)
+        if len(nickname) < 3 or len(nickname) > 30:
             return create_error_response(
                 400,
-                'Nickname must be between 3 and 20 characters',
+                'Nickname must be between 3 and 30 characters',
                 event
             )
         

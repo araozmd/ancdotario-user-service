@@ -63,9 +63,14 @@ def lambda_handler(event, context):
             )
         
         # Validate nickname format
-        validation_error = validate_nickname(nickname)
-        if validation_error:
-            return create_error_response(400, validation_error, event)
+        validation_result = validate_nickname(nickname)
+        if validation_result:
+            return create_error_response(
+                400, 
+                validation_result['error'], 
+                event,
+                {'hints': validation_result['hints']}
+            )
         
         # Check if nickname is already taken
         existing_user_with_nickname = User.get_by_nickname(nickname)
@@ -84,6 +89,7 @@ def lambda_handler(event, context):
         user = User(
             cognito_id=user_id,
             nickname=nickname,
+            nickname_normalized=nickname.lower(),  # Store normalized version for uniqueness
             image_url=None  # No image initially
         )
         user.save()
@@ -111,43 +117,122 @@ def lambda_handler(event, context):
 
 def validate_nickname(nickname):
     """
-    Validate nickname format and rules
-    Returns error message if invalid, None if valid
+    Validate nickname format and rules with detailed error hints
+    Returns dict with 'error' and 'hints' if invalid, None if valid
     """
-    # Length validation
+    hints = []
+    
+    # Length validation (3-30 characters)
     if len(nickname) < 3:
-        return 'Nickname must be at least 3 characters long'
+        return {
+            'error': 'Nickname is too short',
+            'hints': ['Nickname must be between 3-30 characters long']
+        }
     
-    if len(nickname) > 20:
-        return 'Nickname must be no more than 20 characters long'
+    if len(nickname) > 30:
+        return {
+            'error': 'Nickname is too long', 
+            'hints': ['Nickname must be between 3-30 characters long']
+        }
     
-    # Character validation - allow alphanumeric, underscore, hyphen
-    if not re.match(r'^[a-zA-Z0-9_-]+$', nickname):
-        return 'Nickname can only contain letters, numbers, underscores, and hyphens'
+    # Character validation - only lowercase letters, digits, single underscore
+    if not re.match(r'^[a-z0-9_]+$', nickname):
+        invalid_chars = set(nickname) - set('abcdefghijklmnopqrstuvwxyz0123456789_')
+        if invalid_chars:
+            return {
+                'error': 'Nickname contains invalid characters',
+                'hints': [
+                    'Only lowercase letters (a-z), digits (0-9), and underscores (_) are allowed',
+                    f'Invalid characters found: {", ".join(sorted(invalid_chars))}'
+                ]
+            }
     
-    # Must start with letter or number
-    if not re.match(r'^[a-zA-Z0-9]', nickname):
-        return 'Nickname must start with a letter or number'
+    # Cannot start with underscore
+    if nickname.startswith('_'):
+        return {
+            'error': 'Nickname cannot start with underscore',
+            'hints': ['Nickname must start with a letter (a-z) or digit (0-9)']
+        }
     
-    # Must end with letter or number
-    if not re.match(r'.*[a-zA-Z0-9]$', nickname):
-        return 'Nickname must end with a letter or number'
+    # Cannot end with underscore
+    if nickname.endswith('_'):
+        return {
+            'error': 'Nickname cannot end with underscore',
+            'hints': ['Nickname must end with a letter (a-z) or digit (0-9)']
+        }
     
-    # No consecutive special characters
-    if re.search(r'[_-]{2,}', nickname):
-        return 'Nickname cannot contain consecutive underscores or hyphens'
+    # No consecutive underscores
+    if '__' in nickname:
+        return {
+            'error': 'Nickname contains consecutive underscores',
+            'hints': ['Only single underscores are allowed (no consecutive underscores like "__")']
+        }
     
-    # Reserved words check (case insensitive)
+    # Cannot start with digit (optional restriction to avoid confusion)
+    if nickname[0].isdigit():
+        return {
+            'error': 'Nickname cannot start with a number',
+            'hints': ['Nickname must start with a letter (a-z)']
+        }
+    
+    # Reserved words check (case insensitive, comprehensive list) - check first before confusing chars
     reserved_words = [
-        'admin', 'administrator', 'root', 'system', 'user', 'api', 'www',
-        'ftp', 'mail', 'email', 'support', 'help', 'info', 'contact',
-        'about', 'profile', 'settings', 'account', 'login', 'register',
-        'signup', 'signin', 'logout', 'password', 'forgot', 'reset',
-        'test', 'demo', 'example', 'sample', 'null', 'undefined',
-        'anonymous', 'guest', 'public', 'private'
+        # System/Admin
+        'admin', 'administrator', 'root', 'system', 'user', 'mod', 'moderator',
+        
+        # Technical
+        'api', 'www', 'ftp', 'mail', 'email', 'smtp', 'pop', 'imap',
+        'dns', 'ssl', 'tls', 'http', 'https', 'tcp', 'udp', 'ip',
+        
+        # Support/Contact
+        'support', 'help', 'info', 'contact', 'service', 'team',
+        
+        # Navigation/Pages
+        'about', 'profile', 'settings', 'account', 'dashboard', 'home',
+        'search', 'browse', 'explore', 'discover',
+        
+        # Authentication
+        'login', 'register', 'signup', 'signin', 'logout', 'signout',
+        'password', 'forgot', 'reset', 'verify', 'confirm', 'activate',
+        
+        # Content/Actions
+        'post', 'comment', 'reply', 'share', 'like', 'follow', 'unfollow',
+        'create', 'edit', 'delete', 'update', 'save', 'cancel',
+        
+        # Testing/Development
+        'test', 'demo', 'example', 'sample', 'debug', 'staging', 'dev',
+        
+        # Generic/Reserved
+        'null', 'undefined', 'none', 'empty', 'blank', 'default',
+        'anonymous', 'guest', 'public', 'private', 'temp', 'tmp',
+        
+        # Anecdotario-specific
+        'anecdotario', 'anecdote', 'story', 'campaign', 'organization', 'org',
+        'notification', 'comment', 'photo', 'image', 'upload'
     ]
     
     if nickname.lower() in reserved_words:
-        return f'Nickname "{nickname}" is reserved and cannot be used'
+        return {
+            'error': 'Nickname is reserved',
+            'hints': [
+                f'"{nickname}" is a reserved word and cannot be used',
+                'Please choose a different nickname'
+            ]
+        }
+    
+    # Check for confusing lookalikes (basic homoglyph filtering) - after reserved words
+    confusing_patterns = {
+        r'[il1|]': 'Contains confusing characters that look similar (i, l, 1, |)',
+        r'[o0]': 'Contains confusing characters that look similar (o, 0)',
+        r'rn': 'Contains "rn" which can be confused with "m"',
+        r'[vw]': 'Contains characters that can be visually confused (v, w)'
+    }
+    
+    for pattern, message in confusing_patterns.items():
+        if re.search(pattern, nickname):
+            return {
+                'error': 'Nickname contains potentially confusing characters',
+                'hints': [message, 'Please choose characters that are clearly distinguishable']
+            }
     
     return None  # Valid nickname
