@@ -22,7 +22,8 @@ s3_bucket = "anecdotario-sam-artifacts-us-east-1"
 parameter_overrides = [
     "Environment=dev",
     "TableName=Users-dev",
-    "ParameterStorePrefix=/anecdotario/dev/user-service"
+    "ParameterStorePrefix=/anecdotario/dev/user-service",
+    "CommonsPhotoUploadFunction=commons-service-dev-PhotoUploadFunction"
 ]
 tags = [
     "Environment=dev",
@@ -41,7 +42,8 @@ warm_containers = "EAGER"
 parameter_overrides = [
     "Environment=dev",
     "TableName=Users-dev",
-    "ParameterStorePrefix=/anecdotario/dev/user-service"
+    "ParameterStorePrefix=/anecdotario/dev/user-service",
+    "CommonsPhotoUploadFunction=commons-service-dev-PhotoUploadFunction"
 ]
 
 [default.local_start_lambda.parameters]

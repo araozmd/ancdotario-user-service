@@ -22,7 +22,8 @@ s3_bucket = "anecdotario-sam-artifacts-prod-us-east-1"
 parameter_overrides = [
     "Environment=prod",
     "TableName=Users-prod",
-    "ParameterStorePrefix=/anecdotario/prod/user-service"
+    "ParameterStorePrefix=/anecdotario/prod/user-service",
+    "CommonsPhotoUploadFunction=commons-service-prod-PhotoUploadFunction"
 ]
 tags = [
     "Environment=prod",
@@ -42,7 +43,8 @@ warm_containers = "LAZY"
 parameter_overrides = [
     "Environment=prod",
     "TableName=Users-prod",
-    "ParameterStorePrefix=/anecdotario/prod/user-service"
+    "ParameterStorePrefix=/anecdotario/prod/user-service",
+    "CommonsPhotoUploadFunction=commons-service-prod-PhotoUploadFunction"
 ]
 
 [default.local_start_lambda.parameters]
@@ -50,5 +52,6 @@ warm_containers = "LAZY"
 parameter_overrides = [
     "Environment=prod",
     "TableName=Users-prod",
-    "ParameterStorePrefix=/anecdotario/prod/user-service"
+    "ParameterStorePrefix=/anecdotario/prod/user-service",
+    "CommonsPhotoUploadFunction=commons-service-prod-PhotoUploadFunction"
 ]

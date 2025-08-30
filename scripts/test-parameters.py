@@ -41,17 +41,13 @@ def test_parameters(environment='dev', aws_profile='default'):
     # Local .env file parameters (static configuration)
     local_env_params = [
         'MAX_IMAGE_SIZE',
-        'IMAGE_MAX_WIDTH', 
-        'IMAGE_MAX_HEIGHT',
-        'IMAGE_JPEG_QUALITY',
-        'ALLOWED_IMAGE_EXTENSIONS',
         'JWT_TOKEN_EXPIRY_TOLERANCE',
         'USER_NICKNAME_MIN_LENGTH',
         'USER_NICKNAME_MAX_LENGTH',
         'PHOTO_URL_EXPIRY_DAYS',
-        'ENABLE_IMAGE_OPTIMIZATION',
         'ENABLE_NICKNAME_VALIDATION',
-        'ALLOWED_ORIGINS'
+        'USE_COMMONS_SERVICE',
+        'ENVIRONMENT'
     ]
     
     print(f"🔍 Testing Parameter Store configuration for environment: {environment}")
@@ -207,10 +203,11 @@ photo-upload/
 └── .env.prod                     (Production overrides)
 
 Local files contain:
-- Image processing settings (MAX_IMAGE_SIZE, IMAGE_MAX_WIDTH, etc.)
-- Security settings (ALLOWED_IMAGE_EXTENSIONS, JWT_TOKEN_EXPIRY_TOLERANCE)
-- Feature flags (ENABLE_IMAGE_OPTIMIZATION, ENABLE_NICKNAME_VALIDATION)
-- Default CORS origins
+- Image processing settings (MAX_IMAGE_SIZE - delegated to commons service)
+- Security settings (JWT_TOKEN_EXPIRY_TOLERANCE)
+- Application settings (USER_NICKNAME_*, PHOTO_URL_EXPIRY_DAYS)
+- Feature flags (ENABLE_NICKNAME_VALIDATION, USE_COMMONS_SERVICE)
+- Environment configuration (ENVIRONMENT)
 
 🚀 Setup Commands:
    ./scripts/setup-parameters.sh {environment} [aws-profile]  # SSM only

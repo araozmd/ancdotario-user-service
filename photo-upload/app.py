@@ -3,12 +3,6 @@ import base64
 import os
 import sys
 import boto3
-from PIL import Image
-from PIL.ExifTags import TAGS
-import io
-from datetime import datetime
-import uuid
-from botocore.exceptions import ClientError
 
 # Add shared directory to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'shared'))
@@ -22,265 +16,127 @@ except ImportError:
     from auth import create_response, create_error_response
 
 
+# Initialize AWS clients
+lambda_client = boto3.client('lambda')
 s3_client = boto3.client('s3')
-cognito_client = boto3.client('cognito-idp')
 
 # Critical configuration from SSM (environment-specific/sensitive)
-PHOTO_BUCKET_NAME = config.get_ssm_parameter('photo-bucket-name', os.environ.get('PHOTO_BUCKET_NAME'))
-
-# Static configuration from local .env files
 MAX_IMAGE_SIZE = config.get_int_parameter('max-image-size', 5242880)
-JPEG_QUALITY = config.get_int_parameter('image-jpeg-quality', 85)
-WEBP_QUALITY = config.get_int_parameter('image-webp-quality', 85)
-ENABLE_WEBP = config.get_bool_parameter('enable-webp-support', True)
-
-# Multi-version image settings
-THUMBNAIL_SIZE = config.get_int_parameter('thumbnail-size', 150)
-STANDARD_SIZE = config.get_int_parameter('standard-size', 320)
-HIGH_RES_SIZE = config.get_int_parameter('high-res-size', 800)
-THUMBNAIL_QUALITY = config.get_int_parameter('thumbnail-quality', 80)
-STANDARD_QUALITY = config.get_int_parameter('standard-quality', 85)
-HIGH_RES_QUALITY = config.get_int_parameter('high-res-quality', 90)
-
-# Security and application settings from local .env files
-ALLOWED_EXTENSIONS = set(config.get_list_parameter('allowed-image-extensions', default=['.jpg', '.jpeg', '.png', '.gif']))
+COMMONS_SERVICE_FUNCTION_NAME = config.get_ssm_parameter(
+    'commons-photo-upload-function', 
+    os.environ.get('COMMONS_PHOTO_UPLOAD_FUNCTION', 'commons-service-dev-PhotoUploadFunction')
+)
 
 
-def create_image_versions(image_data):
+def invoke_commons_photo_upload(image_data_b64, entity_id, nickname=None, uploaded_by=None):
     """
-    Create multiple versions of an image (Instagram-style)
-    Returns: dict with thumbnail, standard, and high_res image data
-    """
-    versions = {}
-    
-    try:
-        # Open and process the original image
-        image = Image.open(io.BytesIO(image_data))
-        
-        # Strip EXIF data for privacy and size reduction
-        if hasattr(image, '_getexif') and image._getexif():
-            data = list(image.getdata())
-            image_without_exif = Image.new(image.mode, image.size)
-            image_without_exif.putdata(data)
-            image = image_without_exif
-        
-        # Convert RGBA to RGB if necessary
-        if image.mode in ('RGBA', 'LA'):
-            background = Image.new('RGB', image.size, (255, 255, 255))
-            background.paste(image, mask=image.split()[-1] if image.mode == 'RGBA' else None)
-            image = background
-        elif image.mode not in ('RGB', 'L'):
-            image = image.convert('RGB')
-        
-        # Create versions
-        version_configs = [
-            ('thumbnail', THUMBNAIL_SIZE, THUMBNAIL_QUALITY),
-            ('standard', STANDARD_SIZE, STANDARD_QUALITY),
-            ('high_res', HIGH_RES_SIZE, HIGH_RES_QUALITY)
-        ]
-        
-        for version_name, size, quality in version_configs:
-            # Create a copy for this version
-            version_image = image.copy()
-            
-            # Resize to square aspect ratio (crop center if needed)
-            # Instagram-style: crop to square from center
-            width, height = version_image.size
-            min_dimension = min(width, height)
-            
-            # Crop to square from center
-            left = (width - min_dimension) // 2
-            top = (height - min_dimension) // 2
-            right = left + min_dimension
-            bottom = top + min_dimension
-            
-            version_image = version_image.crop((left, top, right, bottom))
-            
-            # Resize to target size
-            version_image = version_image.resize((size, size), Image.Resampling.LANCZOS)
-            
-            # Save to bytes
-            output_buffer = io.BytesIO()
-            version_image.save(
-                output_buffer, 
-                format='JPEG', 
-                quality=quality, 
-                optimize=True, 
-                progressive=True
-            )
-            
-            versions[version_name] = output_buffer.getvalue()
-        
-        return versions
-        
-    except Exception as e:
-        raise ValueError(f"Failed to process image: {str(e)}")
-
-
-def delete_user_photos_optimized(user, user_id, bucket_name):
-    """
-    Optimized photo cleanup - only scans S3 if user has existing photos in database
-    
-    For efficiency, this function first checks if the user has any photos tracked
-    in the database. If so, it uses a targeted approach to clean up S3.
+    Invoke the commons service photo upload function
     
     Args:
-        user: User model instance (can be None for new users)
-        user_id: Cognito user ID 
-        bucket_name: S3 bucket name
+        image_data_b64: Base64 encoded image data (without data URL prefix)
+        entity_id: User ID (Cognito sub)
+        nickname: User nickname (optional, for new users)
+        uploaded_by: User who uploaded (typically same as entity_id)
         
     Returns:
-        dict: Cleanup results with deleted files and any errors
+        Commons service response data
+        
+    Raises:
+        Exception: If commons service invocation fails
     """
-    cleanup_result = {
-        'deleted_files': [],
-        'deletion_errors': [],
-        'files_scanned': 0,
-        'strategy': 'none'
+    # Prepare payload for commons service
+    commons_payload = {
+        "body": json.dumps({
+            "image": f"data:image/jpeg;base64,{image_data_b64}",
+            "entity_type": "user",
+            "entity_id": entity_id,
+            "photo_type": "profile",
+            "uploaded_by": uploaded_by or entity_id,
+            "upload_source": "user-service",
+            "nickname": nickname  # Include nickname for new users
+        }),
+        "isBase64Encoded": False
     }
     
-    if not bucket_name:
-        return cleanup_result
-    
     try:
-        # Check if user has existing photos in database
-        has_photos = user and (
-            user.thumbnail_url or 
-            user.standard_s3_key or 
-            user.high_res_s3_key or 
-            user.image_url
+        # Invoke commons service function
+        response = lambda_client.invoke(
+            FunctionName=COMMONS_SERVICE_FUNCTION_NAME,
+            InvocationType='RequestResponse',
+            Payload=json.dumps(commons_payload)
         )
         
-        if not has_photos:
-            # New user or no photos - skip S3 scan for performance
-            cleanup_result['strategy'] = 'skip_no_photos'
-            print(f"No existing photos for user {user_id}, skipping S3 cleanup")
-            return cleanup_result
+        # Parse response
+        response_payload = json.loads(response['Payload'].read())
         
-        # User has existing photos - use targeted cleanup
-        cleanup_result['strategy'] = 'targeted'
-        print(f"User has existing photos, performing targeted S3 cleanup")
+        # Check for Lambda execution errors
+        if response.get('FunctionError'):
+            error_details = response_payload.get('errorMessage', 'Unknown error')
+            raise Exception(f"Commons service error: {error_details}")
         
-        # First, delete known photo keys from database
-        known_keys = []
+        # Check for application-level errors
+        if response_payload.get('statusCode', 200) >= 400:
+            error_body = json.loads(response_payload.get('body', '{}'))
+            error_message = error_body.get('error', 'Photo upload failed')
+            raise Exception(f"Photo upload failed: {error_message}")
         
-        # Extract known S3 keys
-        if user.standard_s3_key:
-            known_keys.append(user.standard_s3_key)
-        if user.high_res_s3_key:
-            known_keys.append(user.high_res_s3_key)
-            
-        # Extract keys from URLs
-        if user.thumbnail_url and 's3.amazonaws.com' in user.thumbnail_url:
-            key = user.thumbnail_url.split('.s3.amazonaws.com/')[-1].split('?')[0]  # Remove query params
-            known_keys.append(key)
-            
-        if user.image_url and 's3.amazonaws.com' in user.image_url and user.image_url != user.thumbnail_url:
-            key = user.image_url.split('.s3.amazonaws.com/')[-1].split('?')[0]
-            known_keys.append(key)
+        # Parse success response
+        response_body = json.loads(response_payload.get('body', '{}'))
+        print(f"Commons service photo upload successful: {response_body.get('photo_id')}")
         
-        # Batch delete known keys (much faster than individual deletes)
-        if known_keys:
-            delete_objects = [{'Key': key} for key in known_keys if key]
-            
-            if delete_objects:
-                try:
-                    response = s3_client.delete_objects(
-                        Bucket=bucket_name,
-                        Delete={'Objects': delete_objects}
-                    )
-                    
-                    # Track successful deletions
-                    for deleted in response.get('Deleted', []):
-                        cleanup_result['deleted_files'].append(deleted['Key'])
-                        
-                    # Track errors
-                    for error in response.get('Errors', []):
-                        cleanup_result['deletion_errors'].append({
-                            'key': error['Key'],
-                            'error': error['Message'],
-                            'error_code': error['Code']
-                        })
-                        
-                    cleanup_result['files_scanned'] = len(delete_objects)
-                    print(f"Batch deleted {len(cleanup_result['deleted_files'])} known photos")
-                    
-                except ClientError as e:
-                    print(f"Batch delete failed: {str(e)}")
-                    # Fallback to individual deletes for known keys
-                    for key in known_keys:
-                        if key:
-                            try:
-                                s3_client.delete_object(Bucket=bucket_name, Key=key)
-                                cleanup_result['deleted_files'].append(key)
-                                cleanup_result['files_scanned'] += 1
-                            except ClientError as del_e:
-                                cleanup_result['deletion_errors'].append({
-                                    'key': key,
-                                    'error': str(del_e),
-                                    'error_code': del_e.response.get('Error', {}).get('Code', 'Unknown')
-                                })
+        return response_body
         
-        # Quick scan for any orphaned files (limited to first 100 objects)
-        # This catches files that might not be tracked in database
-        user_prefix = f"users/{user_id}/"
-        
-        try:
-            response = s3_client.list_objects_v2(
-                Bucket=bucket_name,
-                Prefix=user_prefix,
-                MaxKeys=100  # Limit for performance
-            )
-            
-            if 'Contents' in response:
-                orphaned_keys = []
-                for obj in response['Contents']:
-                    key = obj['Key']
-                    if key not in cleanup_result['deleted_files']:  # Not already deleted
-                        orphaned_keys.append(key)
-                
-                # Batch delete orphaned files
-                if orphaned_keys:
-                    delete_objects = [{'Key': key} for key in orphaned_keys]
-                    try:
-                        response = s3_client.delete_objects(
-                            Bucket=bucket_name,
-                            Delete={'Objects': delete_objects}
-                        )
-                        
-                        for deleted in response.get('Deleted', []):
-                            cleanup_result['deleted_files'].append(deleted['Key'])
-                            
-                        for error in response.get('Errors', []):
-                            cleanup_result['deletion_errors'].append({
-                                'key': error['Key'],
-                                'error': error['Message'],
-                                'error_code': error['Code']
-                            })
-                            
-                        cleanup_result['files_scanned'] += len(delete_objects)
-                        print(f"Cleaned up {len(orphaned_keys)} orphaned files")
-                        
-                    except ClientError as e:
-                        print(f"Orphaned file cleanup failed: {str(e)}")
-                        
-        except ClientError as e:
-            print(f"Orphaned file scan failed: {str(e)}")
-            # Non-critical error, continue
-        
-        print(f"Optimized cleanup complete: {len(cleanup_result['deleted_files'])} files deleted, "
-              f"{len(cleanup_result['deletion_errors'])} errors, "
-              f"{cleanup_result['files_scanned']} files scanned")
-                        
     except Exception as e:
-        print(f"Unexpected error during optimized photo cleanup: {str(e)}")
-        cleanup_result['deletion_errors'].append({
-            'operation': 'cleanup',
-            'error': str(e),
-            'error_code': 'UnexpectedError'
-        })
+        print(f"Failed to invoke commons service: {str(e)}")
+        raise
+
+
+def update_user_with_photo_data(user, user_id, commons_response_data, nickname=None):
+    """
+    Update or create user record with photo data from commons service
     
-    return cleanup_result
+    Args:
+        user: Existing user model instance or None for new users
+        user_id: Cognito user ID
+        commons_response_data: Response data from commons service
+        nickname: Nickname for new users
+        
+    Returns:
+        Updated or created User model instance
+    """
+    images = commons_response_data.get('images', {})
+    
+    if user:
+        # Update existing user
+        print(f"Updating existing user record: {user.nickname}")
+        user.thumbnail_url = images.get('thumbnail')
+        user.image_url = images.get('thumbnail')  # Backward compatibility
+        
+        # Clear old S3 keys since commons service manages them now
+        # We'll rely on the commons service's Photo model for S3 key tracking
+        user.standard_s3_key = None
+        user.high_res_s3_key = None
+        
+        user.save()
+        print(f"User record updated successfully")
+    else:
+        # Create new user
+        if not nickname:
+            raise ValueError("Nickname is required for new user creation")
+            
+        print(f"Creating new user record with nickname: {nickname}")
+        user = User(
+            cognito_id=user_id,
+            nickname=nickname,
+            thumbnail_url=images.get('thumbnail'),
+            image_url=images.get('thumbnail'),  # Backward compatibility
+            standard_s3_key=None,  # Managed by commons service now
+            high_res_s3_key=None   # Managed by commons service now
+        )
+        user.save()
+        print(f"New user created successfully")
+        
+    return user
 
 
 def lambda_handler(event, context):
@@ -307,30 +163,32 @@ def lambda_handler(event, context):
             )
         
         # Parse body JSON
-        body_json = {}
-        nickname = None
+        body_json = json.loads(event['body'])
+        image_data = body_json.get('image')
+        nickname = body_json.get('nickname')  # Extract nickname if provided
         
-        # Check if body is base64 encoded
-        if event.get('isBase64Encoded', False):
-            body = base64.b64decode(event['body'])
+        if not image_data:
+            return create_error_response(
+                400,
+                'No image data in request body',
+                event
+            )
+        
+        # Remove data URL prefix if present and extract base64 data
+        if ',' in image_data:
+            image_data_b64 = image_data.split(',')[1]
         else:
-            # Assume the body contains a JSON with base64 image data
-            body_json = json.loads(event['body'])
-            image_data = body_json.get('image')
-            nickname = body_json.get('nickname')  # Extract nickname if provided
+            image_data_b64 = image_data
             
-            if not image_data:
-                return create_error_response(
-                    400,
-                    'No image data in request body',
-                    event
-                )
-            
-            # Remove data URL prefix if present
-            if ',' in image_data:
-                image_data = image_data.split(',')[1]
-            
-            body = base64.b64decode(image_data)
+        # Decode to check size (but we'll pass base64 to commons service)
+        try:
+            body = base64.b64decode(image_data_b64)
+        except Exception:
+            return create_error_response(
+                400,
+                'Invalid base64 image data',
+                event
+            )
         
         # Check file size
         if len(body) > MAX_IMAGE_SIZE:
@@ -341,30 +199,11 @@ def lambda_handler(event, context):
                 {'max_size_mb': MAX_IMAGE_SIZE / 1024 / 1024}
             )
         
-        # Create multiple image versions (Instagram-style)
+        # Get existing user (if any) for nickname validation
+        user = None
         try:
-            image_versions = create_image_versions(body)
-        except ValueError as e:
-            return create_error_response(
-                400,
-                'Failed to process image',
-                event,
-                {'error': str(e)}
-            )
-        
-        # Update or create user record - Get user info and do cleanup FIRST
-        cleanup_result = {'deleted_files': [], 'deletion_errors': [], 'files_scanned': 0}
-        print(f"Starting database operations for user: {user_id}")
-        
-        try:
-            # Try to get existing user
             user = User.get(user_id)
             print(f"Found existing user: {user.nickname}")
-            
-            # CRITICAL: Run cleanup BEFORE uploading new files to prevent deleting new uploads
-            print(f"Running cleanup BEFORE upload to prevent deleting new files")
-            cleanup_result = delete_user_photos_optimized(user, user_id, PHOTO_BUCKET_NAME)
-            
         except User.DoesNotExist:
             print(f"User {user_id} not found, will create new user")
             
@@ -385,127 +224,64 @@ def lambda_handler(event, context):
                     'Nickname already taken',
                     event
                 )
-            
-            # For new users, no cleanup needed (optimized)
-            cleanup_result = delete_user_photos_optimized(None, user_id, PHOTO_BUCKET_NAME)
-            user = None  # Will create after upload
         
-        # Generate unique filename base
-        timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
-        unique_id = str(uuid.uuid4())[:8]
-        
-        # Upload all versions to S3 and collect URLs (AFTER cleanup)
-        image_urls = {}
-        s3_keys = {}  # Store S3 keys for database
-        print(f"Starting S3 upload for {len(image_versions)} image versions (after cleanup)")
-        
+        # Invoke commons service for image processing and upload
+        print(f"Invoking commons service for photo upload")
         try:
-            for version_name, image_data in image_versions.items():
-                filename = f"users/{user_id}/{version_name}_{timestamp}_{unique_id}.jpg"
-                s3_keys[version_name] = filename
-                print(f"Uploading {version_name} version: {filename} ({len(image_data)} bytes)")
-                
-                s3_client.put_object(
-                    Bucket=PHOTO_BUCKET_NAME,
-                    Key=filename,
-                    Body=image_data,
-                    ContentType='image/jpeg',
-                    CacheControl='max-age=31536000',  # 1 year cache
-                    Metadata={
-                        'user_id': user_id,
-                        'version': version_name,
-                        'upload_timestamp': datetime.utcnow().isoformat(),
-                        'original_size': str(len(body)),
-                        'optimized_size': str(len(image_data))
-                    }
-                )
-                print(f"Successfully uploaded {version_name} to S3: {filename}")
-                
-                # Generate URLs based on version type
-                if version_name == 'thumbnail':
-                    # Thumbnail is publicly accessible
-                    image_urls[f"{version_name}_url"] = f"https://{PHOTO_BUCKET_NAME}.s3.amazonaws.com/{filename}"
-                    print(f"Generated public thumbnail URL: {image_urls[f'{version_name}_url']}")
-                else:
-                    # Standard and high_res require presigned URLs (7 days expiry)
-                    presigned_url = s3_client.generate_presigned_url(
-                        'get_object',
-                        Params={'Bucket': PHOTO_BUCKET_NAME, 'Key': filename},
-                        ExpiresIn=604800  # 7 days in seconds
-                    )
-                    image_urls[f"{version_name}_url"] = presigned_url
-                    print(f"Generated presigned URL for {version_name}: {len(presigned_url)} chars")
-            
-            print(f"All S3 uploads completed successfully. Total URLs generated: {len(image_urls)}")
-            
-        except ClientError as e:
+            commons_response = invoke_commons_photo_upload(
+                image_data_b64, 
+                user_id, 
+                nickname, 
+                user_id
+            )
+            print(f"Commons service upload successful: {commons_response.get('photo_id')}")
+        except Exception as e:
             return create_error_response(
                 500,
-                'Failed to upload image',
+                'Photo upload failed',
                 event,
                 {'details': str(e)}
             )
         
-        # Update or create user record with new image URLs
-        print(f"Updating database with new photo URLs")
-        
-        if user:
-            # Update existing user
-            user.thumbnail_url = image_urls.get('thumbnail_url')
-            user.standard_s3_key = s3_keys.get('standard')
-            user.high_res_s3_key = s3_keys.get('high_res')
-            user.image_url = image_urls.get('thumbnail_url')  # Backward compatibility - use public thumbnail
-            print(f"Updating existing user record")
-            user.save()
-            print(f"User record updated successfully")
-        else:
-            # Create new user
-            print(f"Creating new user record with nickname: {nickname}")
-            user = User(
-                cognito_id=user_id,
-                nickname=nickname,
-                thumbnail_url=image_urls.get('thumbnail_url'),
-                standard_s3_key=s3_keys.get('standard'),
-                high_res_s3_key=s3_keys.get('high_res'),
-                image_url=image_urls.get('thumbnail_url')  # Backward compatibility - use public thumbnail
+        # Update or create user record with photo data from commons service
+        try:
+            user = update_user_with_photo_data(user, user_id, commons_response, nickname)
+        except Exception as e:
+            print(f"Failed to update user record: {str(e)}")
+            return create_error_response(
+                500,
+                'Failed to update user record',
+                event,
+                {'details': str(e)}
             )
-            user.save()
-            print(f"New user created successfully")
         
-        # Calculate total size reduction across all versions
-        total_optimized_size = sum(len(data) for data in image_versions.values())
-        size_reduction = f"{(1 - total_optimized_size / len(body)) * 100:.1f}%"
+        # Generate presigned URLs for protected versions using commons photo data
+        images = commons_response.get('images', {})
+        if 'standard' in images or 'high_res' in images:
+            # The commons service already provides presigned URLs
+            print(f"Using presigned URLs from commons service")
         
-        print(f"Preparing success response with {len(image_urls)} image URLs")
-        print(f"Response data: versions={len(image_versions)}, size_reduction={size_reduction}")
+        # Return success response with data from commons service
+        response_data = {
+            'message': 'Photo uploaded successfully',
+            'images': images,
+            'photo_url': images.get('thumbnail'),  # Backward compatibility
+            'versions_created': commons_response.get('versions_created', 3),
+            'size_reduction': commons_response.get('size_reduction', '0.0%'),
+            'photo_id': commons_response.get('photo_id'),
+            'commons_service': True,  # Indicate this was processed by commons service
+            'cleanup': commons_response.get('cleanup', {}),
+            'user': user.to_dict(include_presigned_urls=True, s3_client=s3_client)
+        }
         
-        # Return success response with all image versions
-        # Include presigned URLs since user is authenticated
         response = create_response(
             200,
-            json.dumps({
-                'message': 'Photo uploaded successfully',
-                'images': {
-                    'thumbnail': image_urls.get('thumbnail_url'),
-                    'standard': image_urls.get('standard_url'),  # Presigned URL
-                    'high_res': image_urls.get('high_res_url')   # Presigned URL
-                },
-                'photo_url': image_urls.get('thumbnail_url'),  # Backward compatibility - public thumbnail
-                'versions_created': len(image_versions),
-                'size_reduction': size_reduction,
-                'cleanup': {
-                    'files_scanned': cleanup_result['files_scanned'],
-                    'files_deleted': len(cleanup_result['deleted_files']),
-                    'deleted_files': cleanup_result['deleted_files'] if cleanup_result['deleted_files'] else None,
-                    'deletion_errors': cleanup_result['deletion_errors'] if cleanup_result['deletion_errors'] else None
-                },
-                'user': user.to_dict(include_presigned_urls=True, s3_client=s3_client)
-            }),
+            json.dumps(response_data),
             event,
             ['POST']
         )
         
-        print(f"Photo upload completed successfully - returning response")
+        print(f"Photo upload completed successfully via commons service - returning response")
         return response
         
     except Exception as e:

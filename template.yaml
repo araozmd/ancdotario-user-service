@@ -17,12 +17,6 @@ Parameters:
     Description: DynamoDB table name for users
     Default: "Users-dev"
   
-  KMSKeyId:
-    Type: String
-    Description: KMS Key ID for encryption (optional)
-    Default: ""
-  
-  
   MaxImageSize:
     Type: Number
     Description: Maximum image size in bytes
@@ -32,6 +26,11 @@ Parameters:
     Type: String
     Description: Parameter Store prefix for configuration values
     Default: "/anecdotario/dev/user-service"
+  
+  CommonsPhotoUploadFunction:
+    Type: String
+    Description: Commons service photo upload function name
+    Default: "commons-service-dev-PhotoUploadFunction"
   
 
 Conditions:
@@ -46,10 +45,10 @@ Globals:
       Variables:
         ENVIRONMENT: !Ref Environment
         USER_TABLE_NAME: !Ref UserTable
-        KMS_KEY_ID: !Ref KMSKeyId
         PHOTO_BUCKET_NAME: !Ref PhotoBucket
         MAX_IMAGE_SIZE: !Ref MaxImageSize
         PARAMETER_STORE_PREFIX: !Ref ParameterStorePrefix
+        COMMONS_PHOTO_UPLOAD_FUNCTION: !Ref CommonsPhotoUploadFunction
 
 Resources:
   # API Gateway with JWT Authorizer and OpenAPI Documentation
@@ -119,6 +118,11 @@ Resources:
             Resource: 
               - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ParameterStorePrefix}/*"
               - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/anecdotario/${Environment}/cognito/*"
+          - Effect: Allow
+            Action:
+              - lambda:InvokeFunction
+            Resource: 
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${CommonsPhotoUploadFunction}"
       Events:
         PhotoUpload:
           Type: Api

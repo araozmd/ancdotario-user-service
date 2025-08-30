@@ -22,7 +22,8 @@ s3_bucket = "anecdotario-sam-artifacts-staging-us-east-1"
 parameter_overrides = [
     "Environment=staging",
     "TableName=Users-staging",
-    "ParameterStorePrefix=/anecdotario/staging/user-service"
+    "ParameterStorePrefix=/anecdotario/staging/user-service",
+    "CommonsPhotoUploadFunction=commons-service-staging-PhotoUploadFunction"
 ]
 tags = [
     "Environment=staging",
@@ -41,7 +42,8 @@ warm_containers = "LAZY"
 parameter_overrides = [
     "Environment=staging",
     "TableName=Users-staging",
-    "ParameterStorePrefix=/anecdotario/staging/user-service"
+    "ParameterStorePrefix=/anecdotario/staging/user-service",
+    "CommonsPhotoUploadFunction=commons-service-staging-PhotoUploadFunction"
 ]
 
 [default.local_start_lambda.parameters]
@@ -49,5 +51,6 @@ warm_containers = "LAZY"
 parameter_overrides = [
     "Environment=staging",
     "TableName=Users-staging",
-    "ParameterStorePrefix=/anecdotario/staging/user-service"
+    "ParameterStorePrefix=/anecdotario/staging/user-service",
+    "CommonsPhotoUploadFunction=commons-service-staging-PhotoUploadFunction"
 ]
