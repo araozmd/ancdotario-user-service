@@ -23,7 +23,6 @@ parameter_overrides = [
     "Environment=staging",
     "TableName=Users-staging",
     "ParameterStorePrefix=/anecdotario/staging/user-service",
-    "CommonsPhotoUploadFunction=commons-service-staging-PhotoUploadFunction"
 ]
 tags = [
     "Environment=staging",
@@ -43,7 +42,6 @@ parameter_overrides = [
     "Environment=staging",
     "TableName=Users-staging",
     "ParameterStorePrefix=/anecdotario/staging/user-service",
-    "CommonsPhotoUploadFunction=commons-service-staging-PhotoUploadFunction"
 ]
 
 [default.local_start_lambda.parameters]
@@ -52,5 +50,4 @@ parameter_overrides = [
     "Environment=staging",
     "TableName=Users-staging",
     "ParameterStorePrefix=/anecdotario/staging/user-service",
-    "CommonsPhotoUploadFunction=commons-service-staging-PhotoUploadFunction"
 ]

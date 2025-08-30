@@ -23,7 +23,6 @@ parameter_overrides = [
     "Environment=prod",
     "TableName=Users-prod",
     "ParameterStorePrefix=/anecdotario/prod/user-service",
-    "CommonsPhotoUploadFunction=commons-service-prod-PhotoUploadFunction"
 ]
 tags = [
     "Environment=prod",
@@ -44,7 +43,6 @@ parameter_overrides = [
     "Environment=prod",
     "TableName=Users-prod",
     "ParameterStorePrefix=/anecdotario/prod/user-service",
-    "CommonsPhotoUploadFunction=commons-service-prod-PhotoUploadFunction"
 ]
 
 [default.local_start_lambda.parameters]
@@ -53,5 +51,4 @@ parameter_overrides = [
     "Environment=prod",
     "TableName=Users-prod",
     "ParameterStorePrefix=/anecdotario/prod/user-service",
-    "CommonsPhotoUploadFunction=commons-service-prod-PhotoUploadFunction"
 ]

@@ -27,11 +27,6 @@ Parameters:
     Description: Parameter Store prefix for configuration values
     Default: "/anecdotario/dev/user-service"
   
-  CommonsPhotoUploadFunction:
-    Type: String
-    Description: Commons service photo upload function name
-    Default: "commons-service-dev-PhotoUploadFunction"
-  
 
 Conditions:
   IsDevEnvironment: !Equals [!Ref Environment, dev]
@@ -41,6 +36,8 @@ Conditions:
 Globals:
   Function:
     Timeout: 30  # Increased for image processing
+    Layers:
+      - Fn::ImportValue: !Sub anecdotario-commons-service-layer-arn-${Environment}
     Environment:
       Variables:
         ENVIRONMENT: !Ref Environment
@@ -48,7 +45,6 @@ Globals:
         PHOTO_BUCKET_NAME: !Ref PhotoBucket
         MAX_IMAGE_SIZE: !Ref MaxImageSize
         PARAMETER_STORE_PREFIX: !Ref ParameterStorePrefix
-        COMMONS_PHOTO_UPLOAD_FUNCTION: !Ref CommonsPhotoUploadFunction
 
 Resources:
   # API Gateway with JWT Authorizer and OpenAPI Documentation
@@ -118,11 +114,6 @@ Resources:
             Resource: 
               - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ParameterStorePrefix}/*"
               - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/anecdotario/${Environment}/cognito/*"
-          - Effect: Allow
-            Action:
-              - lambda:InvokeFunction
-            Resource: 
-              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${CommonsPhotoUploadFunction}"
       Events:
         PhotoUpload:
           Type: Api

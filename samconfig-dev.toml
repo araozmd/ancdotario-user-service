@@ -23,7 +23,6 @@ parameter_overrides = [
     "Environment=dev",
     "TableName=Users-dev",
     "ParameterStorePrefix=/anecdotario/dev/user-service",
-    "CommonsPhotoUploadFunction=commons-service-dev-PhotoUploadFunction"
 ]
 tags = [
     "Environment=dev",
@@ -43,7 +42,6 @@ parameter_overrides = [
     "Environment=dev",
     "TableName=Users-dev",
     "ParameterStorePrefix=/anecdotario/dev/user-service",
-    "CommonsPhotoUploadFunction=commons-service-dev-PhotoUploadFunction"
 ]
 
 [default.local_start_lambda.parameters]
