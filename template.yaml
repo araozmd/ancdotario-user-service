@@ -224,6 +224,36 @@ Resources:
             Auth:
               Authorizer: CognitoJWTAuthorizer
 
+  NicknameValidateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./
+      Handler: nickname-validate/app.lambda_handler
+      Runtime: python3.12
+      Architectures:
+        - x86_64
+      MemorySize: 128  # Minimal memory for validation calls
+      Timeout: 10      # Reasonable timeout for commons service calls
+      Policies:
+        - Statement:
+          - Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+              - ssm:GetParametersByPath
+            Resource: 
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ParameterStorePrefix}/*"
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/anecdotario/${Environment}/cognito/*"
+      Events:
+        ValidateNickname:
+          Type: Api
+          Properties:
+            RestApiId: !Ref UserServiceApi
+            Path: /nicknames/{nickname}/validate
+            Method: get
+            Auth:
+              Authorizer: CognitoJWTAuthorizer
+
   UserCreateFunction:
     Type: AWS::Serverless::Function
     Properties:

@@ -887,6 +887,188 @@ components:
       required:
         - error
 
+  /nicknames/{nickname}/validate:
+    get:
+      tags:
+        - Nicknames
+      summary: Validate nickname availability and format
+      description: |
+        Validates a nickname for uniqueness and format compliance using the Anecdotario Commons Service.
+        
+        **Features:**
+        - Global uniqueness checking across all users and organizations
+        - Format validation (length, characters, reserved words)
+        - Entity-specific validation rules
+        - Alternative nickname suggestions if taken
+        - Comprehensive error messaging with hints
+        
+        **Validation Rules:**
+        - Length: 3-30 characters
+        - Characters: a-z, 0-9, _ only (normalized to lowercase)
+        - No leading/trailing underscores
+        - No consecutive underscores (__)
+        - Reserved words blocked (entity-specific)
+        - Cross-entity uniqueness (users can't use org names, vice versa)
+        
+        **Use Cases:**
+        - Real-time validation during user registration
+        - Frontend form validation
+        - Nickname availability checking
+        - Alternative suggestion generation
+      operationId: validateNickname
+      security:
+        - CognitoJWTAuth: []
+      parameters:
+        - name: nickname
+          in: path
+          required: true
+          description: The nickname to validate
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 50
+            example: "john_doe"
+        - name: entity_type
+          in: query
+          required: false
+          description: Entity type for validation context
+          schema:
+            type: string
+            enum: ["user", "org", "campaign"]
+            default: "user"
+            example: "user"
+      responses:
+        200:
+          description: Nickname validation completed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    description: Indicates if the validation call was successful
+                    example: true
+                  valid:
+                    type: boolean
+                    description: True if nickname is available and meets all validation criteria
+                    example: true
+                  original:
+                    type: string
+                    description: Original input nickname (as provided)
+                    example: "John_Doe"
+                  normalized:
+                    type: string
+                    description: Lowercase normalized version used for validation
+                    example: "john_doe"
+                  entity_type:
+                    type: string
+                    description: Entity type used for validation
+                    example: "user"
+                  errors:
+                    type: array
+                    description: List of blocking validation errors (empty if valid)
+                    items:
+                      type: string
+                    example: []
+                  warnings:
+                    type: array
+                    description: List of non-blocking warnings
+                    items:
+                      type: string
+                    example: []
+                  hints:
+                    type: array
+                    description: User-friendly suggestions for improvement
+                    items:
+                      type: string
+                    example: ["Try 'john_doe1' or 'john_doe_user' if this becomes unavailable"]
+                  message:
+                    type: string
+                    description: Human-readable validation result message
+                    example: "Nickname is available and valid"
+                  validation_passed:
+                    type: boolean
+                    description: Same as 'valid' field (backward compatibility)
+                    example: true
+                  error:
+                    type: string
+                    description: Joined error string (backward compatibility, empty if valid)
+                    example: ""
+                  requested_by:
+                    type: string
+                    description: Cognito user ID who requested validation
+                    example: "us-east-1:12345678-1234-1234-1234-123456789012"
+                  timestamp:
+                    type: string
+                    description: Request timestamp/ID
+                    example: "test-request-123"
+                  service:
+                    type: string
+                    description: Service that handled the validation
+                    example: "user-service"
+                  commons_service:
+                    type: boolean
+                    description: Indicates validation was performed by Commons Service
+                    example: true
+                required:
+                  - success
+                  - valid
+                  - original
+                  - normalized
+                  - entity_type
+                  - errors
+                  - message
+        400:
+          description: Bad request - invalid nickname or parameters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Invalid entity_type"
+                  message:
+                    type: string
+                    example: "entity_type must be one of: user, org, campaign"
+                  valid_types:
+                    type: array
+                    items:
+                      type: string
+                    example: ["user", "org", "campaign"]
+                  error_type:
+                    type: string
+                    example: "ValidationError"
+                  commons_service:
+                    type: boolean
+                    example: true
+        401:
+          description: Unauthorized - invalid or missing JWT token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        503:
+          description: Service unavailable - Commons Service layer not available
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Nickname validation service unavailable"
+                  message:
+                    type: string
+                    example: "Commons service layer not found"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
 tags:
   - name: Photos
     description: Photo upload and management operations
@@ -894,3 +1076,5 @@ tags:
     description: User account operations
   - name: Lookup
     description: User lookup and search operations
+  - name: Nicknames
+    description: Nickname validation and availability checking
