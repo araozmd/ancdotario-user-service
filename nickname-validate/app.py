@@ -27,7 +27,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     Validate nickname availability and format using Commons Service
     
-    GET /nicknames/{nickname}/validate?entity_type=user
+    GET /users/validate-nickname/{nickname}?entity_type=user
     """
     try:
         # Get authenticated user (JWT validation handled by API Gateway)
@@ -54,7 +54,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 400,
                 {
                     'error': 'Missing nickname parameter',
-                    'message': 'Nickname is required in path: /nicknames/{nickname}/validate'
+                    'message': 'Nickname is required in path: /users/validate-nickname/{nickname}'
                 }
             )
         

@@ -40,8 +40,10 @@ security:
 paths:
   /users/{userId}/photo/refresh:
     get:
+      tags:
+        - Photos
       summary: Refresh photo URLs
-      description: |\
+      description: |
         Generate fresh presigned URLs for existing photos without re-uploading them.
         
         **Use Case:**
@@ -127,7 +129,7 @@ paths:
                           type: string
                           example: "users/abc123/standard_20250119_123456_a1b2c3d4.jpg"
         401:
-          description: |\
+          description: |
             Unauthorized - Authentication failed. Common causes:
             - Missing Authorization header
             - Using Access Token instead of ID Token
@@ -159,6 +161,8 @@ paths:
 
   /users/{userId}/photo:
     delete:
+      tags:
+        - Photos
       summary: Delete user photo
       description: |
         Delete all versions of a user's profile photo from S3 and clear photo URLs from the database.
@@ -239,6 +243,8 @@ paths:
       security:
         - CognitoJWTAuth: []
     post:
+      tags:
+        - Photos
       summary: Upload user photo
       description: |
         Upload and optimize a user's profile photo with Instagram-style multi-version processing via the Anecdotario Commons Service.
@@ -400,6 +406,8 @@ paths:
 
   /users/by-nickname/{nickname}:
     get:
+      tags:
+        - Lookup
       summary: Get user by nickname
       description: |
         Retrieve user information by their unique nickname.
@@ -446,6 +454,8 @@ paths:
 
   /users:
     post:
+      tags:
+        - Users
       summary: Create new user
       description: Create a new user account with optional nickname
       requestBody:
@@ -489,8 +499,10 @@ paths:
                 $ref: '#/components/schemas/Error'
 
     delete:
+      tags:
+        - Users
       summary: Delete current user account
-      description: |\
+      description: |
         Delete the authenticated user's account and **all associated data** including photos.
         
         **⚠️ DESTRUCTIVE OPERATION - Cannot be undone!**
@@ -520,18 +532,6 @@ paths:
             type: string
             enum: ["true"]
             example: "true"
-      requestBody:
-        required: false
-        description: Optional deletion details
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                reason:
-                  type: string
-                  description: Optional reason for account deletion
-                  example: "User requested account deletion"
       responses:
         200:
           description: User account and all associated data deleted successfully
@@ -625,8 +625,10 @@ paths:
 
   /users/{userId}:
     delete:
+      tags:
+        - Users
       summary: Delete user by ID  
-      description: |\
+      description: |
         Delete a specific user account by ID and **all associated data** including photos.
         
         **⚠️ DESTRUCTIVE OPERATION - Cannot be undone!**
@@ -663,18 +665,6 @@ paths:
             type: string
             enum: ["true"]
             example: "true"
-      requestBody:
-        required: false
-        description: Optional deletion details
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                reason:
-                  type: string
-                  description: Optional reason for account deletion
-                  example: "User requested account deletion"
       responses:
         200:
           description: User account and all associated data deleted successfully
@@ -772,125 +762,10 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-components:
-  securitySchemes:
-    CognitoJWTAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-      description: |
-        AWS Cognito JWT **ID Token** (not Access Token). Include the token in the Authorization header:
-        `Authorization: Bearer <your-id-token>`
-        
-        **Important**: You must use the **ID Token**, not the Access Token:
-        
-        **Correct (ID Token):**
-        ```javascript
-        const session = await Auth.currentSession();
-        const idToken = session.getIdToken().getJwtToken(); // ✅ Use this
-        ```
-        
-        **Incorrect (Access Token):**
-        ```javascript
-        const accessToken = session.getAccessToken().getJwtToken(); // ❌ Don't use this
-        ```
-        
-        **Token Characteristics:**
-        - **ID Token**: Contains user identity claims (`token_use: "id"`)
-        - **Access Token**: For AWS service access (`token_use: "access"`) 
-        - **Issuer**: `https://cognito-idp.us-east-1.amazonaws.com/us-east-1_W1OBKShP1`
-        - **Expiry**: Typically 1 hour (check `exp` claim)
-
-  schemas:
-    User:
-      type: object
-      properties:
-        cognito_id:
-          type: string
-          description: Cognito user ID (primary key)
-          example: "us-east-1:12345678-1234-1234-1234-123456789012"
-        nickname:
-          type: string
-          description: Unique user nickname
-          example: "johndoe123"
-        images:
-          type: object
-          nullable: true
-          description: |
-            Multiple profile image versions with selective access control.
-            
-            **Security Model:**
-            - thumbnail: Always included (publicly accessible)
-            - standard & high_res: Only included for authenticated users (presigned URLs with 7-day expiry)
-          properties:
-            thumbnail:
-              type: string
-              format: uri
-              description: Small thumbnail (150x150px) - Always accessible
-              example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/thumbnail_20250116_123456_a1b2c3d4.jpg"
-            standard:
-              type: string
-              format: uri
-              description: Standard size (320x320px) - Authenticated users only (presigned URL)
-              example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/standard_20250116_123456_a1b2c3d4.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=..."
-            high_res:
-              type: string
-              format: uri
-              description: High resolution (800x800px) - Authenticated users only (presigned URL)
-              example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/high_res_20250116_123456_a1b2c3d4.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=..."
-        image_url:
-          type: string
-          format: uri
-          nullable: true
-          description: Legacy field - Now returns thumbnail URL for backward compatibility (publicly accessible)
-          example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/thumbnail_20250116_123456_a1b2c3d4.jpg"
-        created_at:
-          type: string
-          format: date-time
-          description: Timestamp when user was created
-          example: "2025-01-15T10:30:00Z"
-        updated_at:
-          type: string
-          format: date-time
-          description: Timestamp when user was last updated
-          example: "2025-01-15T15:45:30Z"
-      required:
-        - cognito_id
-        - nickname
-        - created_at
-        - updated_at
-
-    Error:
-      type: object
-      properties:
-        error:
-          type: string
-          description: Error message
-          example: "Invalid image format"
-        details:
-          type: string
-          description: Additional error details
-          example: "Supported formats: JPEG, PNG, WebP"
-        error_type:
-          type: string
-          description: |
-            Specific error type from Commons Service integration:
-            - ValidationError: Input validation failures
-            - ImageProcessingError: Image processing failures  
-            - StorageError: S3 storage operation failures
-          enum: ["ValidationError", "ImageProcessingError", "StorageError", "AuthenticationError", "PermissionError", "NotFoundError", "InternalError"]
-          example: "ValidationError"
-        commons_service:
-          type: boolean
-          description: Indicates if error originated from Commons Service
-          example: true
-      required:
-        - error
-
-  /nicknames/{nickname}/validate:
+  /users/validate-nickname/{nickname}:
     get:
       tags:
-        - Nicknames
+        - Users
       summary: Validate nickname availability and format
       description: |
         Validates a nickname for uniqueness and format compliance using the Anecdotario Commons Service.
@@ -1069,6 +944,121 @@ components:
               schema:
                 $ref: '#/components/schemas/Error'
 
+components:
+  securitySchemes:
+    CognitoJWTAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        AWS Cognito JWT **ID Token** (not Access Token). Include the token in the Authorization header:
+        `Authorization: Bearer <your-id-token>`
+        
+        **Important**: You must use the **ID Token**, not the Access Token:
+        
+        **Correct (ID Token):**
+        ```javascript
+        const session = await Auth.currentSession();
+        const idToken = session.getIdToken().getJwtToken(); // ✅ Use this
+        ```
+        
+        **Incorrect (Access Token):**
+        ```javascript
+        const accessToken = session.getAccessToken().getJwtToken(); // ❌ Don't use this
+        ```
+        
+        **Token Characteristics:**
+        - **ID Token**: Contains user identity claims (`token_use: "id"`)
+        - **Access Token**: For AWS service access (`token_use: "access"`) 
+        - **Issuer**: `https://cognito-idp.us-east-1.amazonaws.com/us-east-1_W1OBKShP1`
+        - **Expiry**: Typically 1 hour (check `exp` claim)
+
+  schemas:
+    User:
+      type: object
+      properties:
+        cognito_id:
+          type: string
+          description: Cognito user ID (primary key)
+          example: "us-east-1:12345678-1234-1234-1234-123456789012"
+        nickname:
+          type: string
+          description: Unique user nickname
+          example: "johndoe123"
+        images:
+          type: object
+          nullable: true
+          description: |
+            Multiple profile image versions with selective access control.
+            
+            **Security Model:**
+            - thumbnail: Always included (publicly accessible)
+            - standard & high_res: Only included for authenticated users (presigned URLs with 7-day expiry)
+          properties:
+            thumbnail:
+              type: string
+              format: uri
+              description: Small thumbnail (150x150px) - Always accessible
+              example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/thumbnail_20250116_123456_a1b2c3d4.jpg"
+            standard:
+              type: string
+              format: uri
+              description: Standard size (320x320px) - Authenticated users only (presigned URL)
+              example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/standard_20250116_123456_a1b2c3d4.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=..."
+            high_res:
+              type: string
+              format: uri
+              description: High resolution (800x800px) - Authenticated users only (presigned URL)
+              example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/high_res_20250116_123456_a1b2c3d4.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=..."
+        image_url:
+          type: string
+          format: uri
+          nullable: true
+          description: Legacy field - Now returns thumbnail URL for backward compatibility (publicly accessible)
+          example: "https://user-service-dev-photos.s3.amazonaws.com/users/abc123/thumbnail_20250116_123456_a1b2c3d4.jpg"
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when user was created
+          example: "2025-01-15T10:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp when user was last updated
+          example: "2025-01-15T15:45:30Z"
+      required:
+        - cognito_id
+        - nickname
+        - created_at
+        - updated_at
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+          example: "Invalid image format"
+        details:
+          type: string
+          description: Additional error details
+          example: "Supported formats: JPEG, PNG, WebP"
+        error_type:
+          type: string
+          description: |
+            Specific error type from Commons Service integration:
+            - ValidationError: Input validation failures
+            - ImageProcessingError: Image processing failures  
+            - StorageError: S3 storage operation failures
+          enum: ["ValidationError", "ImageProcessingError", "StorageError", "AuthenticationError", "PermissionError", "NotFoundError", "InternalError"]
+          example: "ValidationError"
+        commons_service:
+          type: boolean
+          description: Indicates if error originated from Commons Service
+          example: true
+      required:
+        - error
+
 tags:
   - name: Photos
     description: Photo upload and management operations
@@ -1076,5 +1066,3 @@ tags:
     description: User account operations
   - name: Lookup
     description: User lookup and search operations
-  - name: Nicknames
-    description: Nickname validation and availability checking

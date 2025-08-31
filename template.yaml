@@ -249,7 +249,7 @@ Resources:
           Type: Api
           Properties:
             RestApiId: !Ref UserServiceApi
-            Path: /nicknames/{nickname}/validate
+            Path: /users/validate-nickname/{nickname}
             Method: get
             Auth:
               Authorizer: CognitoJWTAuthorizer
