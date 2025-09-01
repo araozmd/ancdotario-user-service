@@ -252,6 +252,78 @@ Resources:
                   - cloudformation:ListStacks
                   - cloudformation:DescribeStacks
                 Resource: "*"
+              # DynamoDB permissions for user service tables
+              - Effect: Allow
+                Action:
+                  - dynamodb:CreateTable
+                  - dynamodb:DeleteTable
+                  - dynamodb:DescribeTable
+                  - dynamodb:UpdateTable
+                  - dynamodb:TagResource
+                  - dynamodb:UntagResource
+                  - dynamodb:ListTagsOfResource
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Scan
+                  - dynamodb:Query
+                  - dynamodb:BatchGetItem
+                  - dynamodb:BatchWriteItem
+                  - dynamodb:DescribeTimeToLive
+                  - dynamodb:UpdateTimeToLive
+                  - dynamodb:DescribeContinuousBackups
+                  - dynamodb:UpdateContinuousBackups
+                Resource: 
+                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/Users-*"
+                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/Users-*/index/*"
+              # Lambda permissions for function management
+              - Effect: Allow
+                Action:
+                  - lambda:CreateFunction
+                  - lambda:DeleteFunction
+                  - lambda:UpdateFunctionCode
+                  - lambda:UpdateFunctionConfiguration
+                  - lambda:GetFunction
+                  - lambda:ListFunctions
+                  - lambda:InvokeFunction
+                  - lambda:AddPermission
+                  - lambda:RemovePermission
+                  - lambda:GetPolicy
+                  - lambda:PutProvisionedConcurrencyConfig
+                  - lambda:DeleteProvisionedConcurrencyConfig
+                  - lambda:GetProvisionedConcurrencyConfig
+                  - lambda:ListProvisionedConcurrencyConfigs
+                  - lambda:TagResource
+                  - lambda:UntagResource
+                  - lambda:ListTags
+                Resource: 
+                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:*"
+              # API Gateway permissions for REST API management
+              - Effect: Allow
+                Action:
+                  - apigateway:GET
+                  - apigateway:POST
+                  - apigateway:PUT
+                  - apigateway:DELETE
+                  - apigateway:PATCH
+                  - apigateway:UpdateRestApiPolicy
+                Resource: "*"
+              # CodeArtifact permissions for commons library
+              - Effect: Allow
+                Action:
+                  - codeartifact:GetAuthorizationToken
+                  - codeartifact:GetRepositoryEndpoint
+                  - codeartifact:ReadFromRepository
+                  - codeartifact:ListPackages
+                  - codeartifact:DescribePackageVersion
+                  - codeartifact:GetPackageVersionReadme
+                  - codeartifact:GetPackageVersionAsset
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - sts:GetServiceBearerToken
+                Resource: "*"
               # Cognito permissions for JWT authorizers
               - Effect: Allow
                 Action:

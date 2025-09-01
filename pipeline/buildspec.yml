@@ -12,6 +12,10 @@ phases:
       
   pre_build:
     commands:
+      - echo "Configuring CodeArtifact authentication..."
+      - |
+        # Login to CodeArtifact for anecdotario-commons package
+        aws codeartifact login --tool pip --repository anecdotario-commons --domain anecdotario
       - echo "Creating SAM artifact buckets..."
       - |
         # Create SAM artifact buckets for each environment if they don't exist
