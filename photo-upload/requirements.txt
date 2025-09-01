@@ -3,3 +3,4 @@ pynamodb==6.0.2
 PyJWT==2.10.1
 cryptography==44.0.0
 requests==2.32.3
+anecdotario-commons==1.0.3

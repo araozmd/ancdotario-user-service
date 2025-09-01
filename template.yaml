@@ -36,8 +36,6 @@ Conditions:
 Globals:
   Function:
     Timeout: 30  # Increased for image processing
-    Layers:
-      - Fn::ImportValue: !Sub anecdotario-commons-service-layer-arn-${Environment}
     Environment:
       Variables:
         ENVIRONMENT: !Ref Environment
@@ -114,6 +112,11 @@ Resources:
             Resource: 
               - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ParameterStorePrefix}/*"
               - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/anecdotario/${Environment}/cognito/*"
+          - Effect: Allow
+            Action:
+              - lambda:InvokeFunction
+            Resource: 
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:anecdotario-commons-photo-upload-${Environment}"
       Events:
         PhotoUpload:
           Type: Api
@@ -148,6 +151,11 @@ Resources:
             Resource: 
               - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ParameterStorePrefix}/*"
               - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/anecdotario/${Environment}/cognito/*"
+          - Effect: Allow
+            Action:
+              - lambda:InvokeFunction
+            Resource: 
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:anecdotario-commons-photo-delete-${Environment}"
       Events:
         PhotoDelete:
           Type: Api
@@ -244,6 +252,11 @@ Resources:
             Resource: 
               - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ParameterStorePrefix}/*"
               - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/anecdotario/${Environment}/cognito/*"
+          - Effect: Allow
+            Action:
+              - lambda:InvokeFunction
+            Resource: 
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:anecdotario-nickname-validate-${Environment}"
       Events:
         ValidateNickname:
           Type: Api

@@ -1,2 +1,3 @@
 boto3==1.35.78
 pynamodb==6.0.2
+anecdotario-commons==1.0.3

@@ -3,6 +3,7 @@ import base64
 import os
 import sys
 import boto3
+import logging
 
 # Add shared directory to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'shared'))
@@ -15,24 +16,34 @@ except ImportError:
     # Fallback to full auth module if simplified not available
     from auth import create_response, create_error_response
 
-
-# Import commons service (from Lambda layer)
-from services import PhotoService
-from exceptions import ValidationError, ImageProcessingError, StorageError
-
-# Initialize PhotoService
-photo_service = PhotoService()
+# Import commons service contracts (from CodeArtifact package)
+try:
+    from anecdotario_commons.contracts import PhotoContracts
+    from anecdotario_commons.exceptions import ValidationError, ImageProcessingError, StorageError
+except ImportError:
+    # Fallback if commons package not available
+    PhotoContracts = None
+    ValidationError = Exception
+    ImageProcessingError = Exception
+    StorageError = Exception
 
 # Initialize AWS clients
+lambda_client = boto3.client('lambda')
 s3_client = boto3.client('s3')
 
 # Configuration
 MAX_IMAGE_SIZE = config.get_int_parameter('max-image-size', 5242880)
+ENVIRONMENT = os.environ.get('ENVIRONMENT', 'dev')
+COMMONS_PHOTO_FUNCTION = f"anecdotario-commons-photo-upload-{ENVIRONMENT}"
+
+# Set up logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 
 def upload_user_photo(image_data_b64, entity_id, nickname=None, uploaded_by=None):
     """
-    Upload user photo using commons PhotoService
+    Upload user photo using commons service Lambda function
     
     Args:
         image_data_b64: Base64 encoded image data (without data URL prefix)
@@ -46,17 +57,55 @@ def upload_user_photo(image_data_b64, entity_id, nickname=None, uploaded_by=None
     Raises:
         ValidationError, ImageProcessingError, StorageError: From commons service
     """
-    result = photo_service.upload_photo(
-        image_data=f"data:image/jpeg;base64,{image_data_b64}",
-        entity_type="user",
-        entity_id=entity_id,
-        photo_type="profile",
-        uploaded_by=uploaded_by or entity_id,
-        upload_source="user-service"
-    )
+    # Prepare payload for commons service Lambda
+    payload = {
+        "image_data": f"data:image/jpeg;base64,{image_data_b64}",
+        "entity_type": "user",
+        "entity_id": entity_id,
+        "photo_type": "profile",
+        "uploaded_by": uploaded_by or entity_id,
+        "upload_source": "user-service"
+    }
     
-    print(f"Photo upload successful: {result.get('photo_id')}")
-    return result
+    logger.info(f"Invoking commons photo service for entity: {entity_id}")
+    
+    try:
+        # Invoke commons service Lambda function
+        response = lambda_client.invoke(
+            FunctionName=COMMONS_PHOTO_FUNCTION,
+            InvocationType='RequestResponse',  # Synchronous invocation
+            Payload=json.dumps(payload)
+        )
+        
+        # Parse response
+        response_payload = json.loads(response['Payload'].read())
+        
+        # Check for function errors
+        if response.get('FunctionError'):
+            logger.error(f"Commons service function error: {response_payload}")
+            raise StorageError(f"Commons service error: {response_payload.get('errorMessage', 'Unknown error')}")
+        
+        # Check for application errors in response
+        if not response_payload.get('success', False):
+            error_type = response_payload.get('error_type', 'UnknownError')
+            error_message = response_payload.get('error', 'Photo upload failed')
+            
+            # Map error types to appropriate exceptions
+            if error_type == 'ValidationError':
+                raise ValidationError(error_message)
+            elif error_type == 'ImageProcessingError':
+                raise ImageProcessingError(error_message)
+            else:
+                raise StorageError(error_message)
+        
+        logger.info(f"Photo upload successful: {response_payload.get('photo_id')}")
+        return response_payload
+        
+    except Exception as e:
+        logger.error(f"Failed to invoke commons photo service: {str(e)}")
+        if isinstance(e, (ValidationError, ImageProcessingError, StorageError)):
+            raise
+        raise StorageError(f"Failed to invoke commons photo service: {str(e)}")
 
 
 def update_user_with_photo_data(user, user_id, commons_response_data, nickname=None):

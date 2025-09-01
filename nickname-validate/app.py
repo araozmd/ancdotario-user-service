@@ -1,22 +1,29 @@
 import json
 import logging
+import boto3
+import os
 from typing import Dict, Any, Optional
 
-# Commons service imports (from Lambda layer)
+# Import commons service contracts (from CodeArtifact package)
 try:
-    from contracts import NicknameContracts
-    from exceptions import ValidationError
+    from anecdotario_commons.contracts import NicknameContracts
+    from anecdotario_commons.exceptions import ValidationError
 except ImportError:
-    # Fallback if layer not available
-    logging.warning("Commons service layer not available - nickname validation disabled")
+    # Fallback if commons package not available
     NicknameContracts = None
     ValidationError = Exception
 
 # Local imports
 import sys
-import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from shared.auth_simplified import get_authenticated_user, create_response
+
+# Initialize AWS clients
+lambda_client = boto3.client('lambda')
+
+# Configuration
+ENVIRONMENT = os.environ.get('ENVIRONMENT', 'dev')
+COMMONS_NICKNAME_FUNCTION = f"anecdotario-nickname-validate-{ENVIRONMENT}"
 
 # Set up logging
 logger = logging.getLogger()
@@ -76,23 +83,50 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         logger.info(f"Validating nickname '{nickname}' for entity_type '{entity_type}'")
         
-        # Call commons service nickname validation
+        # Call commons service nickname validation via Lambda invocation
         try:
-            # Use the validate_nickname contract
-            validation_result = NicknameContracts.validate_nickname(
-                nickname=nickname,
-                entity_type=entity_type
+            # Prepare payload for commons service Lambda
+            payload = {
+                "nickname": nickname,
+                "entity_type": entity_type
+            }
+            
+            logger.info(f"Invoking commons nickname validation service for: {nickname}")
+            
+            # Invoke commons service Lambda function
+            response = lambda_client.invoke(
+                FunctionName=COMMONS_NICKNAME_FUNCTION,
+                InvocationType='RequestResponse',  # Synchronous invocation
+                Payload=json.dumps(payload)
             )
             
-            # Add metadata
-            validation_result.update({
+            # Parse response
+            response_payload = json.loads(response['Payload'].read())
+            
+            # Check for function errors
+            if response.get('FunctionError'):
+                logger.error(f"Commons service function error: {response_payload}")
+                raise Exception(f"Commons service error: {response_payload.get('errorMessage', 'Unknown error')}")
+            
+            # Check for application errors in response
+            if not response_payload.get('success', False):
+                error_type = response_payload.get('error_type', 'ValidationError')
+                error_message = response_payload.get('error', 'Nickname validation failed')
+                
+                if error_type == 'ValidationError':
+                    raise ValidationError(error_message)
+                else:
+                    raise Exception(error_message)
+            
+            # Add metadata to successful response
+            response_payload.update({
                 'requested_by': claims['sub'],
                 'timestamp': context.aws_request_id if context else None,
                 'service': 'user-service'
             })
             
             # Return success response with validation results
-            return create_response(200, validation_result)
+            return create_response(200, response_payload)
             
         except ValidationError as e:
             logger.error(f"Validation error: {str(e)}")
