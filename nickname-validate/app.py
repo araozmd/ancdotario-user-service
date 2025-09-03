@@ -16,7 +16,7 @@ except ImportError:
     ValidationError = Exception
     COMMONS_AVAILABLE = False
     
-    # Simple response functions as fallback
+    # Simple response functions as fallback - let API Gateway handle CORS
     def create_response(status_code: int, body: dict) -> dict:
         return {
             'statusCode': status_code,
@@ -110,18 +110,26 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 logger.error(f"Commons service function error: {response_payload}")
                 raise Exception(f"Commons service error: {response_payload.get('errorMessage', 'Unknown error')}")
             
-            # For Lambda-to-Lambda, the response is the direct return value (no HTTP wrapper)
-            # The response should contain validation results directly
-            
-            # Add metadata to successful response
-            response_payload.update({
-                'requested_by': 'anonymous',  # No auth required for nickname validation
-                'timestamp': context.aws_request_id if context else None,
-                'service': 'user-service'
-            })
-            
-            # Return success response with validation results
-            return create_response(200, response_payload)
+            # The commons service is returning API Gateway format even for direct invocation
+            # Parse the actual validation results from the body
+            if response_payload.get('statusCode') == 200:
+                # Parse successful validation response
+                validation_data = json.loads(response_payload['body'])
+                
+                # Add metadata to successful response
+                validation_data.update({
+                    'requested_by': 'anonymous',  # No auth required for nickname validation
+                    'timestamp': context.aws_request_id if context else None,
+                    'service': 'user-service'
+                })
+                
+                # Return clean API Gateway response with CORS
+                return create_response(200, validation_data)
+            else:
+                # Parse error response from commons service
+                error_data = json.loads(response_payload.get('body', '{}'))
+                error_message = error_data.get('error', 'Nickname validation failed')
+                raise ValidationError(error_message)
             
         except ValidationError as e:
             logger.error(f"Validation error: {str(e)}")
