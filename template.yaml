@@ -265,7 +265,7 @@ Resources:
             Path: /users/validate-nickname/{nickname}
             Method: get
             Auth:
-              Authorizer: CognitoJWTAuthorizer
+              Authorizer: NONE  # Anonymous access for registration flow
 
   UserCreateFunction:
     Type: AWS::Serverless::Function

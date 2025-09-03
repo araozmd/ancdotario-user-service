@@ -37,10 +37,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     GET /users/validate-nickname/{nickname}?entity_type=user
     """
     try:
-        # Get authenticated user (JWT validation handled by API Gateway)
-        claims, error = get_authenticated_user(event)
-        if error:
-            return error
+        # No authentication required - this is an anonymous endpoint for registration flow
+        # CORS configuration in API Gateway restricts origins (staging/prod only allow specific domains)
         
         # Check if commons service is available
         if not NicknameContracts:
@@ -69,8 +67,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         query_params = event.get('queryStringParameters') or {}
         entity_type = query_params.get('entity_type', 'user')
         
-        # Validate entity_type
-        valid_entity_types = ['user', 'org', 'campaign']
+        # Validate entity_type (v1.0.4: campaigns removed - only users and orgs have nicknames)
+        valid_entity_types = ['user', 'org']
         if entity_type not in valid_entity_types:
             return create_response(
                 400,
@@ -120,7 +118,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             
             # Add metadata to successful response
             response_payload.update({
-                'requested_by': claims['sub'],
+                'requested_by': 'anonymous',  # No auth required for nickname validation
                 'timestamp': context.aws_request_id if context else None,
                 'service': 'user-service'
             })
