@@ -53,16 +53,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # No authentication required - this is an anonymous endpoint for registration flow
         # CORS configuration in API Gateway restricts origins (staging/prod only allow specific domains)
         
-        # Check if commons service is available
-        if not COMMONS_AVAILABLE or not NicknameContracts:
-            return create_response(
-                503,
-                {
-                    'error': 'Nickname validation service unavailable',
-                    'message': 'Commons service layer not found'
-                }
-            )
-        
         # Extract path parameters
         path_params = event.get('pathParameters') or {}
         nickname = path_params.get('nickname')
@@ -96,7 +86,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         # Call commons service nickname validation via Lambda invocation
         try:
-            # Prepare payload for commons service Lambda
+            # Prepare payload for commons service Lambda (direct format as per documentation)
             payload = {
                 "nickname": nickname,
                 "entity_type": entity_type
@@ -111,23 +101,17 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 Payload=json.dumps(payload)
             )
             
-            # Parse response
+            # Parse response from Lambda (direct format as per documentation)
             response_payload = json.loads(response['Payload'].read())
+            logger.info(f"Commons service response: {response_payload}")
             
             # Check for function errors
             if response.get('FunctionError'):
                 logger.error(f"Commons service function error: {response_payload}")
                 raise Exception(f"Commons service error: {response_payload.get('errorMessage', 'Unknown error')}")
             
-            # Check for application errors in response
-            if not response_payload.get('success', False):
-                error_type = response_payload.get('error_type', 'ValidationError')
-                error_message = response_payload.get('error', 'Nickname validation failed')
-                
-                if error_type == 'ValidationError':
-                    raise ValidationError(error_message)
-                else:
-                    raise Exception(error_message)
+            # For Lambda-to-Lambda, the response is the direct return value (no HTTP wrapper)
+            # The response should contain validation results directly
             
             # Add metadata to successful response
             response_payload.update({
