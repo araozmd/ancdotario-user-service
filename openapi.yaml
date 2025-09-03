@@ -786,13 +786,17 @@ paths:
         - Cross-entity uniqueness (users can't use org names, vice versa)
         
         **Use Cases:**
-        - Real-time validation during user registration
+        - Real-time validation during user registration (anonymous access)
         - Frontend form validation
         - Nickname availability checking
         - Alternative suggestion generation
+        
+        **Security:**
+        - Anonymous endpoint (no authentication required)
+        - CORS protection restricts origins (staging/prod only allow anecdotario.com domains)
+        - Rate limiting recommended via AWS WAF for production abuse prevention
       operationId: validateNickname
-      security:
-        - CognitoJWTAuth: []
+      security: []  # No authentication required - anonymous endpoint
       parameters:
         - name: nickname
           in: path
@@ -809,7 +813,7 @@ paths:
           description: Entity type for validation context
           schema:
             type: string
-            enum: ["user", "org", "campaign"]
+            enum: ["user", "org"]
             default: "user"
             example: "user"
       responses:
@@ -872,8 +876,8 @@ paths:
                     example: ""
                   requested_by:
                     type: string
-                    description: Cognito user ID who requested validation
-                    example: "us-east-1:12345678-1234-1234-1234-123456789012"
+                    description: Request origin (anonymous for nickname validation)
+                    example: "anonymous"
                   timestamp:
                     type: string
                     description: Request timestamp/ID
@@ -911,19 +915,13 @@ paths:
                     type: array
                     items:
                       type: string
-                    example: ["user", "org", "campaign"]
+                    example: ["user", "org"]
                   error_type:
                     type: string
                     example: "ValidationError"
                   commons_service:
                     type: boolean
                     example: true
-        401:
-          description: Unauthorized - invalid or missing JWT token
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
         503:
           description: Service unavailable - Commons Service layer not available
           content:
