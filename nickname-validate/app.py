@@ -4,19 +4,32 @@ import boto3
 import os
 from typing import Dict, Any, Optional
 
-# Import commons service contracts (from CodeArtifact package)
+# Import from CodeArtifact package
 try:
     from anecdotario_commons.contracts import NicknameContracts
     from anecdotario_commons.exceptions import ValidationError
+    from anecdotario_commons.response import create_response, create_error_response
+    COMMONS_AVAILABLE = True
 except ImportError:
     # Fallback if commons package not available
     NicknameContracts = None
     ValidationError = Exception
-
-# Local imports
-import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from shared.auth_simplified import get_authenticated_user, create_response
+    COMMONS_AVAILABLE = False
+    
+    # Simple response functions as fallback
+    def create_response(status_code: int, body: dict) -> dict:
+        return {
+            'statusCode': status_code,
+            'headers': {'Content-Type': 'application/json'},
+            'body': json.dumps(body)
+        }
+    
+    def create_error_response(status_code: int, message: str, details: dict = None) -> dict:
+        return create_response(status_code, {
+            'error': message,
+            'statusCode': status_code,
+            'details': details
+        })
 
 # Initialize AWS clients
 lambda_client = boto3.client('lambda')
@@ -41,7 +54,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # CORS configuration in API Gateway restricts origins (staging/prod only allow specific domains)
         
         # Check if commons service is available
-        if not NicknameContracts:
+        if not COMMONS_AVAILABLE or not NicknameContracts:
             return create_response(
                 503,
                 {
