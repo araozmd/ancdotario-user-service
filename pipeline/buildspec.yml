@@ -52,7 +52,7 @@ phases:
       - echo "Running tests..."
       - |
         # Test all Lambda functions
-        for function in photo-upload user-create user-delete user-lookup; do
+        for function in nickname-validate photo-delete photo-refresh photo-upload user-create user-delete user-lookup; do
           echo "Testing $function..."
           cd $function
           pip install -r requirements.txt
