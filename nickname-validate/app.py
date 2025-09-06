@@ -47,7 +47,10 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     Validate nickname availability and format using Commons Service
     
-    GET /users/validate-nickname/{nickname}?entity_type=user
+    GET /users/validate-nickname/{nickname}
+    
+    Note: This endpoint is specifically for USER nickname validation.
+    Organizations have their own validation service (anecdotario-org-service).
     """
     try:
         # No authentication required - this is an anonymous endpoint for registration flow
@@ -66,23 +69,14 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 }
             )
         
-        # Extract query parameters
-        query_params = event.get('queryStringParameters') or {}
-        entity_type = query_params.get('entity_type', 'user')
+        # User Service only validates USER nicknames (constant entity_type)
+        # Organizations have their own dedicated validation service
+        entity_type = 'user'  # Constant - this service is user-specific
         
-        # Validate entity_type (v1.0.4: campaigns removed - only users and orgs have nicknames)
-        valid_entity_types = ['user', 'org']
-        if entity_type not in valid_entity_types:
-            return create_response(
-                400,
-                {
-                    'error': 'Invalid entity_type',
-                    'message': f'entity_type must be one of: {", ".join(valid_entity_types)}',
-                    'valid_types': valid_entity_types
-                }
-            )
+        # Note: We ignore any entity_type query parameter for backward compatibility,
+        # but this endpoint always validates as 'user' since it's in the User Service
         
-        logger.info(f"Validating nickname '{nickname}' for entity_type '{entity_type}'")
+        logger.info(f"Validating USER nickname '{nickname}' (entity_type='{entity_type}')")
         
         # Call commons service nickname validation via Lambda invocation
         try:
@@ -120,7 +114,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 validation_data.update({
                     'requested_by': 'anonymous',  # No auth required for nickname validation
                     'timestamp': context.aws_request_id if context else None,
-                    'service': 'user-service'
+                    'service': 'user-service',
+                    'entity_type': 'user'  # Always user for this service
                 })
                 
                 # Return clean API Gateway response with CORS

@@ -768,12 +768,15 @@ paths:
         - Users
       summary: Validate nickname availability and format
       description: |
-        Validates a nickname for uniqueness and format compliance using the Anecdotario Commons Service.
+        Validates a USER nickname for uniqueness and format compliance using the Anecdotario Commons Service.
+        
+        **Important:** This endpoint is specifically for USER nickname validation only. 
+        Organizations have their own dedicated nickname validation service in anecdotario-org-service.
         
         **Features:**
-        - Global uniqueness checking across all users and organizations
+        - Global uniqueness checking across all users and organizations  
         - Format validation (length, characters, reserved words)
-        - Entity-specific validation rules
+        - User-specific validation rules
         - Alternative nickname suggestions if taken
         - Comprehensive error messaging with hints
         
@@ -787,9 +790,9 @@ paths:
         
         **Use Cases:**
         - Real-time validation during user registration (anonymous access)
-        - Frontend form validation
-        - Nickname availability checking
-        - Alternative suggestion generation
+        - Frontend form validation for user accounts
+        - User nickname availability checking
+        - Alternative user nickname suggestion generation
         
         **Security:**
         - Anonymous endpoint (no authentication required)
@@ -810,7 +813,11 @@ paths:
         - name: entity_type
           in: query
           required: false
-          description: Entity type for validation context
+          deprecated: true
+          description: |
+            **DEPRECATED**: This parameter is ignored for backward compatibility. 
+            This endpoint always validates USER nicknames only. 
+            For organization nickname validation, use the anecdotario-org-service.
           schema:
             type: string
             enum: ["user", "org"]
@@ -842,7 +849,8 @@ paths:
                     example: "john_doe"
                   entity_type:
                     type: string
-                    description: Entity type used for validation
+                    description: Entity type used for validation (always "user" for this endpoint)
+                    enum: ["user"]
                     example: "user"
                   errors:
                     type: array

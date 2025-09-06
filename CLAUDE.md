@@ -595,3 +595,9 @@ python --version  # Should show Python 3.12.8
 8. **Optimize function resources** - Right-size memory/timeout per function
 9. **Cache configuration** - Reduce SSM API calls
 10. **Document everything** - Future you will thank present you
+
+
+- Use Context7 to check up-to-date docs when needed for implementing new libraries or frameworks, or adding features using them.
+- If you make simple change use SAM instead commit and push directly to main branch to do fast deployment.
+- Afer a feature is completed, commit the changes with a clear message using gitmoji style but never push the changes until you are asked to do so.
+- Everytime you update a function that is exposed through the API Gateway, update the OpenAPI spec in the template.yaml file to reflect the changes. 
