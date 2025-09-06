@@ -16,11 +16,15 @@ except ImportError:
     ValidationError = Exception
     COMMONS_AVAILABLE = False
     
-    # Simple response functions as fallback - let API Gateway handle CORS
+    # Simple response functions as fallback with CORS headers for anonymous endpoints
     def create_response(status_code: int, body: dict) -> dict:
         return {
             'statusCode': status_code,
-            'headers': {'Content-Type': 'application/json'},
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET,OPTIONS'
+            },
             'body': json.dumps(body)
         }
     
