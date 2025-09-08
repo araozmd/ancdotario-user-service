@@ -38,6 +38,191 @@ security:
   - CognitoJWTAuth: []
 
 paths:
+  /health/test-mode:
+    get:
+      tags:
+        - Health
+      summary: Test Mode Verification
+      description: |
+        Verifies if the service is running in test mode and checks overall service health.
+        
+        **Purpose:**
+        - Enables test suites to confirm they're running against the correct environment
+        - Provides service health status and connectivity checks
+        - No authentication required (public health endpoint)
+        
+        **Response Information:**
+        - Current environment (dev/staging/prod)
+        - Test mode status (true for dev/staging, false for prod)
+        - Service health status (ok/degraded)
+        - Connectivity status for DynamoDB and S3
+        - Service version and build information
+        - Current timestamp
+        
+        **Health Status:**
+        - `ok`: All services connected and functioning
+        - `degraded`: One or more services have connectivity issues
+        
+        **Security:**
+        - No authentication required
+        - Safe to expose publicly as it only returns service status
+        - Does not expose sensitive configuration details
+      security: []  # No authentication required
+      responses:
+        '200':
+          description: Health check completed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service:
+                    type: string
+                    example: "anecdotario-user-service"
+                    description: Service name identifier
+                  environment:
+                    type: string
+                    enum: [dev, staging, prod]
+                    example: "dev"
+                    description: Current deployment environment
+                  test_mode:
+                    type: boolean
+                    example: true
+                    description: Whether service is running in test mode (true for dev/staging)
+                  health:
+                    type: string
+                    enum: [ok, degraded]
+                    example: "ok"
+                    description: Overall service health status
+                  timestamp:
+                    type: string
+                    format: date-time
+                    example: "2023-12-01T10:00:00Z"
+                    description: Health check timestamp in ISO 8601 format
+                  version:
+                    type: string
+                    example: "CODEBUILD_BUILD_ID=test-build-123"
+                    description: Service version or build information
+                  connectivity:
+                    type: object
+                    properties:
+                      dynamodb:
+                        type: string
+                        enum: [connected, error]
+                        example: "connected"
+                        description: DynamoDB connectivity status
+                      s3:
+                        type: string
+                        enum: [connected, error]
+                        example: "connected"
+                        description: S3 connectivity status
+                    required:
+                      - dynamodb
+                      - s3
+                  connectivity_details:
+                    type: object
+                    description: Detailed connectivity information (only present when health is degraded)
+                    properties:
+                      dynamodb:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                          table_name:
+                            type: string
+                          table_status:
+                            type: string
+                          error_code:
+                            type: string
+                          message:
+                            type: string
+                      s3:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                          bucket_name:
+                            type: string
+                          error_code:
+                            type: string
+                          message:
+                            type: string
+                required:
+                  - service
+                  - environment
+                  - test_mode
+                  - health
+                  - timestamp
+                  - version
+                  - connectivity
+              examples:
+                healthy:
+                  summary: Healthy service response
+                  value:
+                    service: "anecdotario-user-service"
+                    environment: "dev"
+                    test_mode: true
+                    health: "ok"
+                    timestamp: "2023-12-01T10:00:00Z"
+                    version: "CODEBUILD_BUILD_ID=build-123"
+                    connectivity:
+                      dynamodb: "connected"
+                      s3: "connected"
+                degraded:
+                  summary: Service with connectivity issues
+                  value:
+                    service: "anecdotario-user-service"
+                    environment: "dev"
+                    test_mode: true
+                    health: "degraded"
+                    timestamp: "2023-12-01T10:00:00Z"
+                    version: "runtime=AWS_Lambda_python3.12"
+                    connectivity:
+                      dynamodb: "error"
+                      s3: "connected"
+                    connectivity_details:
+                      dynamodb:
+                        status: "error"
+                        error_code: "ResourceNotFoundException"
+                        message: "Table not found"
+                      s3:
+                        status: "connected"
+                        bucket_name: "test-bucket-photos-dev"
+                production:
+                  summary: Production environment (test_mode=false)
+                  value:
+                    service: "anecdotario-user-service"
+                    environment: "prod"
+                    test_mode: false
+                    health: "ok"
+                    timestamp: "2023-12-01T10:00:00Z"
+                    version: "CODEBUILD_BUILD_ID=prod-build-456"
+                    connectivity:
+                      dynamodb: "connected"
+                      s3: "connected"
+        '500':
+          description: Health check failed due to internal error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Health check failed"
+                    description: Error message
+                  statusCode:
+                    type: integer
+                    example: 500
+                    description: HTTP status code
+                  details:
+                    type: string
+                    example: "Unexpected error occurred"
+                    description: Additional error details
+                required:
+                  - error
+                  - statusCode
+
   /users/{userId}/photo/refresh:
     get:
       tags:

@@ -34,7 +34,7 @@ s3_client = boto3.client('s3')
 # Configuration
 MAX_IMAGE_SIZE = config.get_int_parameter('max-image-size', 5242880)
 ENVIRONMENT = os.environ.get('ENVIRONMENT', 'dev')
-COMMONS_PHOTO_FUNCTION = f"anecdotario-commons-photo-upload-{ENVIRONMENT}"
+COMMONS_PHOTO_FUNCTION = f"anecdotario-photo-upload-{ENVIRONMENT}"
 
 # Set up logging
 logger = logging.getLogger()
@@ -59,7 +59,7 @@ def upload_user_photo(image_data_b64, entity_id, nickname=None, uploaded_by=None
     """
     # Prepare payload for commons service Lambda
     payload = {
-        "image_data": f"data:image/jpeg;base64,{image_data_b64}",
+        "image": f"data:image/jpeg;base64,{image_data_b64}",
         "entity_type": "user",
         "entity_id": entity_id,
         "photo_type": "profile",

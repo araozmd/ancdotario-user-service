@@ -351,6 +351,81 @@ Resources:
             Auth:
               Authorizer: CognitoJWTAuthorizer
 
+  BatchDeleteFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./
+      Handler: batch-delete/app.lambda_handler
+      Runtime: python3.12
+      Architectures:
+        - x86_64
+      MemorySize: 512  # Higher memory for concurrent operations
+      Timeout: 120     # Extended timeout for batch processing
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserTable
+        - S3CrudPolicy:
+            BucketName: !Ref PhotoBucket
+        - Statement:
+          - Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+              - ssm:GetParametersByPath
+            Resource: 
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ParameterStorePrefix}/*"
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/anecdotario/${Environment}/cognito/*"
+      Events:
+        BatchDeleteUsers:
+          Type: Api
+          Properties:
+            RestApiId: !Ref UserServiceApi
+            Path: /users/batch-delete
+            Method: post
+            Auth:
+              Authorizer: CognitoJWTAuthorizer
+
+  HealthTestModeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./
+      Handler: health-test-mode/app.lambda_handler
+      Runtime: python3.12
+      Architectures:
+        - x86_64
+      MemorySize: 128  # Minimal memory for health checks
+      Timeout: 15      # Short timeout for health endpoint
+      Policies:
+        - Statement:
+          - Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+              - ssm:GetParametersByPath
+            Resource: 
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ParameterStorePrefix}/*"
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/anecdotario/${Environment}/cognito/*"
+          - Effect: Allow
+            Action:
+              - dynamodb:DescribeTable
+            Resource: 
+              - !GetAtt UserTable.Arn
+          - Effect: Allow
+            Action:
+              - s3:ListBucket
+              - s3:HeadBucket
+            Resource: 
+              - !GetAtt PhotoBucket.Arn
+      Events:
+        HealthCheck:
+          Type: Api
+          Properties:
+            RestApiId: !Ref UserServiceApi
+            Path: /health/test-mode
+            Method: get
+            Auth:
+              Authorizer: NONE  # No authentication required for health checks
+
   UserTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -459,6 +534,18 @@ Outputs:
     Value: !GetAtt UserDeleteFunction.Arn
     Export:
       Name: !Sub "${AWS::StackName}-UserDeleteFunctionArn"
+  
+  BatchDeleteFunction:
+    Description: "Batch Delete Lambda Function ARN"
+    Value: !GetAtt BatchDeleteFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-BatchDeleteFunctionArn"
+  
+  HealthTestModeFunction:
+    Description: "Health Test Mode Lambda Function ARN"
+    Value: !GetAtt HealthTestModeFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-HealthTestModeFunctionArn"
   
   # S3 Bucket
   PhotoBucket:

@@ -1,0 +1,13 @@
+{
+  "requestContext": {
+    "authorizer": {
+      "claims": {
+        "sub": "test-user-123",
+        "email": "test@example.com",
+        "nickname": "testuser"
+      }
+    },
+    "requestTime": "2023-12-01T10:00:00Z"
+  },
+  "body": "{\"user_ids\": [\"test-user-123\", \"test-user-456\"], \"confirm\": true, \"test_mode\": false, \"reason\": \"Test cleanup via API\"}"
+}

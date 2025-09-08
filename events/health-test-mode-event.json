@@ -1,0 +1,31 @@
+{
+  "httpMethod": "GET",
+  "path": "/health/test-mode",
+  "pathParameters": null,
+  "queryStringParameters": null,
+  "headers": {
+    "Accept": "application/json",
+    "Content-Type": "application/json",
+    "User-Agent": "test-client/1.0"
+  },
+  "multiValueHeaders": {},
+  "body": null,
+  "isBase64Encoded": false,
+  "requestContext": {
+    "requestId": "test-request-id",
+    "stage": "Prod",
+    "httpMethod": "GET",
+    "path": "/health/test-mode",
+    "resourcePath": "/health/test-mode",
+    "resourceId": "test-resource",
+    "requestTime": "01/Dec/2023:10:00:00 +0000",
+    "requestTimeEpoch": 1701424800000,
+    "identity": {
+      "sourceIp": "127.0.0.1"
+    },
+    "protocol": "HTTP/1.1",
+    "requestTimeEpoch": 1701424800000
+  },
+  "resource": "/health/test-mode",
+  "stageVariables": null
+}
